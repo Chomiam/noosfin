@@ -72,7 +72,7 @@ L'installateur vérifie votre système, propose les options puis installe tout :
 </tr>
 <tr>
 <td><b>Moteur de sources intégré</b> · trackers et débrideur, triés selon vos priorités.</td>
-<td><b>Configuration depuis le téléphone</b> · un QR code à l'écran, les clés se tapent sur le mobile.</td>
+<td><b>Configuration</b> · dans l'application à la manette, ou sur le téléphone via un QR code.</td>
 </tr>
 </table>
 
@@ -93,7 +93,8 @@ L'installateur vérifie votre système, propose les options puis installe tout :
 ## 🚀 Premiers pas
 
 1. Au démarrage, Noosfin s'ouvre tout seul (ou lancez « Noosfin » depuis le menu KDE).
-2. **Paramètres → Sources & débrideur** : scannez le QR code avec votre téléphone, puis renseignez
+2. **Paramètres → Sources & débrideur** : réglez tout à la manette ou au clavier (ou, en bas de l'écran,
+   « Configurer depuis le téléphone » pour un QR code), puis renseignez
    - votre clé de débrideur (AllDebrid, TorBox ou Real-Debrid) ;
    - une clé [TMDB](https://www.themoviedb.org/settings/api) (gratuite) pour les catalogues en français ;
    - vos trackers privés et vos priorités.

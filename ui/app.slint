@@ -1,7 +1,7 @@
-import { Theme, Card, MediaRow, EpisodeData, SourceData, IptvProfile, FormField } from "theme.slint";
+import { Theme, Card, MediaRow, EpisodeData, SourceData, IptvProfile, FormField, ScRow } from "theme.slint";
 import { Badge, Button, PosterCard, RowsView, IconButton } from "widgets.slint";
 
-export { Theme, Card, MediaRow, EpisodeData, SourceData, IptvProfile, FormField }
+export { Theme, Card, MediaRow, EpisodeData, SourceData, IptvProfile, FormField, ScRow }
 
 // ─────────────────────────────── Tableau de bord ───────────────────────────────
 
@@ -623,6 +623,106 @@ component Search inherits Rectangle {
 
 // ─────────────────────────────── Paramètres ───────────────────────────────
 
+// ─────────────────────────────── Configuration des sources ───────────────────────────────
+
+component SourcesConfig inherits Rectangle {
+    in property <[ScRow]> rows;
+    in property <int> current;
+    in property <string> msg;
+    in property <image> qr;
+    in property <bool> has-qr;
+    callback clicked(int);
+    background: @radial-gradient(circle, #313244 0%, #11111b 100%);
+
+    property <length> row-h: 62px;
+    property <length> list-y: 170px;
+    property <length> list-h: root.height - root.list-y - 90px;
+
+    Text { x: Theme.margin; y: 60px; text: "Sources & débrideur"; font-size: 56px; font-weight: 900; color: Theme.text; }
+    Text { x: Theme.margin; y: 128px; text: "Enregistré automatiquement à chaque modification."; font-size: 20px; color: Theme.overlay; }
+
+    Rectangle {
+        x: Theme.margin;
+        y: root.list-y;
+        width: root.width * 0.56;
+        height: root.list-h;
+        clip: true;
+        Rectangle {
+            // La ligne sélectionnée reste vers le tiers supérieur.
+            y: -max(0px, min(root.current * root.row-h - root.list-h / 3, root.rows.length * root.row-h - root.list-h));
+            animate y { duration: 140ms; easing: ease-out; }
+            for r[i] in root.rows : Rectangle {
+                y: i * root.row-h;
+                height: root.row-h - 8px;
+                width: parent.width;
+                border-radius: 14px;
+                background: r.header ? transparent : (i == root.current ? Theme.text : Theme.surface0);
+                Text {
+                    x: r.header ? 4px : 24px;
+                    width: parent.width * 0.6;
+                    text: r.label;
+                    font-size: r.header ? 26px : 21px;
+                    font-weight: r.header ? 900 : 700;
+                    color: r.header ? Theme.mauve : (i == root.current ? Theme.crust : Theme.text);
+                    overflow: elide;
+                }
+                if !r.header && r.state < 0 : Text {
+                    x: parent.width * 0.6;
+                    width: parent.width * 0.4 - 24px;
+                    text: r.value;
+                    font-size: 20px;
+                    horizontal-alignment: right;
+                    color: i == root.current ? Theme.crust : Theme.subtext;
+                    overflow: elide;
+                }
+                if !r.header && r.state >= 0 : Rectangle {
+                    x: parent.width - 24px - 58px;
+                    width: 58px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: r.state == 1 ? Theme.green : Theme.surface1;
+                    Rectangle {
+                        x: r.state == 1 ? parent.width - 28px : 4px;
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 12px;
+                        background: white;
+                        animate x { duration: 120ms; }
+                    }
+                }
+                TouchArea { clicked => { root.clicked(i); } }
+            }
+        }
+    }
+
+    Rectangle {
+        x: root.width * 0.56 + Theme.margin + 40px;
+        y: root.list-y;
+        width: root.width - self.x - Theme.margin;
+        height: root.has-qr ? 640px : 260px;
+        border-radius: 28px;
+        background: Theme.surface0;
+        visible: root.has-qr || root.msg != "";
+        VerticalLayout {
+            padding: 32px;
+            spacing: 18px;
+            alignment: center;
+            if root.has-qr : HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 320px;
+                    height: 320px;
+                    border-radius: 16px;
+                    clip: true;
+                    background: white;
+                    Image { width: parent.width; height: parent.height; source: root.qr; image-rendering: pixelated; }
+                }
+            }
+            Text { text: root.msg; font-size: 20px; color: Theme.subtext; wrap: word-wrap; horizontal-alignment: center; }
+        }
+    }
+}
+
 component Settings inherits Rectangle {
     in property <[string]> lines;
     in property <[string]> actions;
@@ -998,6 +1098,11 @@ export component AppWindow inherits Window {
     in property <int> dash-area;
     in property <int> dash-index;
     in property <[int]> dash-tiles: [0, 1, 2, 4, 5];
+    in property <[ScRow]> sc-rows;
+    in property <int> sc-focus;
+    in property <string> sc-msg;
+    in property <image> sc-qr;
+    in property <bool> sc-has-qr;
     in property <string> dash-disc;
     in property <bool> hdr-on;
     in property <bool> hdr-available;
@@ -1213,6 +1318,15 @@ export component AppWindow inherits Window {
             qr: root.set-code-qr;
             has-qr: root.set-has-qr;
             clicked(i) => { root.click(5, 0, i); }
+        }
+
+        if root.screen == 9 : SourcesConfig {
+            rows: root.sc-rows;
+            current: root.sc-focus;
+            msg: root.sc-msg;
+            qr: root.sc-qr;
+            has-qr: root.sc-has-qr;
+            clicked(i) => { root.click(11, 0, i); }
         }
 
         if root.screen == 6 : IptvProfiles {

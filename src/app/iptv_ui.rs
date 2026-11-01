@@ -26,6 +26,8 @@ struct Field {
 
 struct Form {
     m3u: bool,
+    /// Formulaire réutilisé pour un réglage des sources (clé API, tracker…).
+    edit: Option<super::sources_ui::Edit>,
     fields: Vec<Field>,
     focus: i32,
     kb: bool,
@@ -650,7 +652,14 @@ impl Controller {
                 f("Mot de passe", true, "mot de passe"),
             ]
         };
-        self.iptv.form = Some(Form { m3u, fields, focus: 0, kb: false, kb_focus: 0, shift: false, error: String::new(), busy: false });
+        self.iptv.form = Some(Form { m3u, edit: None, fields, focus: 0, kb: false, kb_focus: 0, shift: false, error: String::new(), busy: false });
+        self.go(SCR_IPTV_FORM);
+    }
+
+    /// Formulaire de saisie pour la configuration des sources.
+    pub(super) fn open_text_form(&mut self, edit: super::sources_ui::Edit, fields: Vec<(&'static str, bool, &'static str, String)>) {
+        let fields = fields.into_iter().map(|(label, secret, placeholder, value)| Field { label, value, secret, placeholder }).collect();
+        self.iptv.form = Some(Form { m3u: false, edit: Some(edit), fields, focus: 0, kb: true, kb_focus: 0, shift: false, error: String::new(), busy: false });
         self.go(SCR_IPTV_FORM);
     }
 
@@ -725,6 +734,11 @@ impl Controller {
     fn submit_form(&mut self) {
         let Some(f) = self.iptv.form.as_mut() else { return };
         let vals: Vec<String> = f.fields.iter().map(|x| x.value.trim().to_string()).collect();
+        if let Some(e) = f.edit.clone() {
+            self.iptv.form = None;
+            self.back();
+            return self.apply_edit(e, vals);
+        }
         if vals.iter().skip(1).any(|v| v.is_empty()) {
             f.error = "Tous les champs sont requis".into();
             return;
@@ -973,12 +987,14 @@ impl Controller {
         ui.set_iptv_sel(self.iptv.sel);
 
         if let Some(f) = &self.iptv.form {
-            ui.set_form_submit("Se connecter et enregistrer".into());
+            ui.set_form_submit(if f.edit.is_some() { "Enregistrer" } else { "Se connecter et enregistrer" }.into());
             ui.set_form_title(
-                if f.m3u {
-                    "Nouvelle playlist M3U"
+                if let Some(e) = &f.edit {
+                    e.title().into()
+                } else if f.m3u {
+                    "Nouvelle playlist M3U".to_string()
                 } else {
-                    "Nouveau compte Xtream Codes"
+                    "Nouveau compte Xtream Codes".to_string()
                 }
                 .into(),
             );

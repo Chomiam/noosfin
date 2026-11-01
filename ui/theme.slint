@@ -71,3 +71,12 @@ export struct FormField {
     value: string,
     placeholder: string,
 }
+
+/// Ligne de la configuration des sources : en-tête de section ou réglage.
+/// `state` : -1 valeur texte, 0 désactivé, 1 activé.
+export struct ScRow {
+    header: bool,
+    label: string,
+    value: string,
+    state: int,
+}

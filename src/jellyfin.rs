@@ -97,27 +97,8 @@ pub struct PlaybackInfo {
     pub play_session_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct QuickConnectState {
-    pub authenticated: bool,
-    pub secret: String,
-    pub code: String,
-}
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct AuthResult {
-    pub access_token: String,
-    pub user: AuthUser,
-}
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct AuthUser {
-    pub id: String,
-    pub name: String,
-}
 
 /// Champs demandés pour toutes les listes d'éléments.
 const FIELDS: &str = "Overview,Genres,ProviderIds,PrimaryImageAspectRatio,ChildCount,MediaStreams";
@@ -180,21 +161,8 @@ impl Jellyfin {
 
     // --- Authentification Quick Connect -------------------------------------------------
 
-    pub async fn quick_connect_initiate(&self) -> Result<QuickConnectState> {
-        Ok(self.post("/QuickConnect/Initiate", &[], json!({})).await?.json().await?)
-    }
 
-    pub async fn quick_connect_state(&self, secret: &str) -> Result<QuickConnectState> {
-        self.get("/QuickConnect/Connect", &[("secret", secret.to_string())]).await
-    }
 
-    pub async fn quick_connect_auth(&self, secret: &str) -> Result<AuthResult> {
-        Ok(self
-            .post("/Users/AuthenticateWithQuickConnect", &[], json!({ "Secret": secret }))
-            .await?
-            .json()
-            .await?)
-    }
 
     // --- Navigation -----------------------------------------------------------------------
 

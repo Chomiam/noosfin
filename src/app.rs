@@ -4,6 +4,7 @@
 //! renvoient leurs résultats avec `post`, qui s'exécute dans la boucle d'événements Slint.
 
 mod iptv_ui;
+mod sources_ui;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -117,6 +118,7 @@ const SCR_SETTINGS: i32 = 5;
 const SCR_IPTV_PROFILES: i32 = 6;
 const SCR_IPTV_FORM: i32 = 7;
 const SCR_IPTV: i32 = 8;
+const SCR_SRC_CFG: i32 = 9;
 
 const TAB_HOME: i32 = 0;
 const TAB_ANIME: i32 = 1;
@@ -521,6 +523,11 @@ pub struct Controller {
     hero_url: Option<String>,
     /// Animes dont le résumé français a déjà été demandé.
     fr_requested: HashSet<i64>,
+    /// Configuration des sources dans l'application.
+    sc_cfg: scraper::config::Sources,
+    sc_focus: i32,
+    sc_msg: String,
+    sc_model: Rc<VecModel<crate::ScRow>>,
     /// Lecteur optique (interne ou USB) et disque inséré.
     disc: Option<crate::disc::Disc>,
     /// Lecture de disque en cours (pour expliquer un échec AACS).
@@ -613,6 +620,10 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
         update_busy: false,
         disc: None,
         disc_playing: false,
+        sc_cfg: scraper::config::Sources::default(),
+        sc_focus: 1,
+        sc_msg: String::new(),
+        sc_model: Rc::new(VecModel::default()),
         catalogs: vec![],
         aio_name: String::new(),
         detail: None,
@@ -653,6 +664,7 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
     ))));
 
     iptv_ui::bind(ui, &ctrl);
+    ui.set_sc_rows(ModelRc::from(ctrl.sc_model.clone()));
     CTRL.with(|c| *c.borrow_mut() = Some(ctrl));
 
     ui.on_key(|text| {
@@ -1171,6 +1183,9 @@ impl Controller {
         ui.set_q_col(self.search.col());
         ui.set_s_focus(self.src_focus);
         ui.set_set_focus(self.set_focus);
+        if self.screen == SCR_SRC_CFG {
+            self.sc_sync();
+        }
         if let Some(d) = &self.detail {
             ui.set_d_area(d.area);
             ui.set_d_button(d.button);
@@ -1187,6 +1202,7 @@ impl Controller {
                 SCR_IPTV_PROFILES => "Ⓐ Se connecter    Ⓧ Recharger le catalogue    Ⓨ Supprimer    Ⓑ Accueil",
                 SCR_IPTV_FORM => "Ⓐ Saisir    → Clavier    Ⓑ Annuler",
                 SCR_IPTV => "Ⓐ Lire / ouvrir    Ⓧ Favori    LB / RB Onglets    Ⓑ Profils",
+                SCR_SRC_CFG => "Ⓐ / ← → Modifier    Ⓨ Tester    Ⓧ Retirer un tracker    LB / RB Défiler    Ⓑ Retour",
                 _ => "",
             }
             .into(),
@@ -1336,6 +1352,7 @@ impl Controller {
             SCR_IPTV_PROFILES => self.nav_iptv_profiles(n),
             SCR_IPTV_FORM => self.nav_iptv_form(n),
             SCR_IPTV => self.nav_iptv(n),
+            SCR_SRC_CFG => self.nav_sc(n),
             _ => {}
         }
         self.sync();
@@ -1363,6 +1380,10 @@ impl Controller {
                     }
                 }
                 self.nav_detail(Nav::Accept);
+            }
+            11 => {
+                self.sc_focus = b;
+                self.nav_sc(Nav::Accept);
             }
             3 => {
                 self.src_focus = b;
@@ -2751,34 +2772,6 @@ impl Controller {
     }
 
     /// Démarre (une fois) la page de configuration et affiche son QR code.
-    fn open_sources_config(&mut self) {
-        if let Some(url) = self.web_url.clone() {
-            return self.show_web_qr(&url);
-        }
-        let on_save: scraper::web::OnSave = Arc::new(|_cfg| post(|c| c.reload_sources()));
-        self.spawn(async move {
-            match scraper::web::start(on_save).await {
-                Ok(w) => post(move |c| {
-                    c.web_url = Some(w.url.clone());
-                    c.show_web_qr(&w.url);
-                }),
-                Err(e) => post(move |c| c.toast(format!("Serveur de configuration : {e:#}"))),
-            }
-        });
-    }
-
-    fn show_web_qr(&mut self, url: &str) {
-        let ui = self.ui();
-        ui.set_set_code_qr(crate::qr::image(url));
-        ui.set_set_has_qr(true);
-        let host = url.split('?').next().unwrap_or(url).trim_start_matches("http://").trim_end_matches('/');
-        ui.set_set_code("".into());
-        ui.set_set_code_title("Sources & débrideur".into());
-        ui.set_set_code_hint(
-            format!("Scannez avec votre téléphone (même réseau Wi-Fi)\npour choisir le débrideur, les trackers et les priorités.\n{host}").into(),
-        );
-    }
-
     fn reload_sources(&mut self) {
         let had_tmdb = self.aio_name.starts_with("TMDB");
         self.svc = Services::new(self.svc.cfg.clone(), self.svc.http.clone());
@@ -3231,7 +3224,7 @@ impl Controller {
 
     fn settings_actions(&self) -> Vec<String> {
         vec![
-            "Sources & débrideur (configurer sur le téléphone)".into(),
+            "Sources & débrideur".into(),
             format!("Clavier physique : {}", session::keyboard_label(&self.svc.cfg.session.keyboard)),
             format!("Audio : {}", if self.svc.cfg.player.audio == "bitperfect" { "bit-perfect (fréquence d'origine, bitstream HDMI)" } else { "standard (mixage PipeWire)" }),
             match (&self.update, self.update_busy) {
@@ -3239,22 +3232,14 @@ impl Controller {
                 (Some(r), false) => format!("Installer la mise à jour {} (actuelle : {})", r.version, crate::update::VERSION),
                 (None, false) => format!("Rechercher une mise à jour (version {})", crate::update::VERSION),
             },
-            if self.svc.jf_ready() { "Déconnecter Jellyfin".into() } else { "Connecter Jellyfin (Quick Connect)".into() },
-            format!("Bibliothèque anime : {}", self.anime_library().and_then(|id| self.views.iter().find(|v| v.id == id).map(|v| v.name.clone())).unwrap_or_else(|| "aucune".into())),
             "Importer AIOStreams depuis Gelato (SSH)".into(),
             "Recharger la médiathèque".into(),
-            "Retour".into(),
         ]
     }
 
     fn sync_settings(&mut self) {
         let cfg = &self.svc.cfg;
         let lines = vec![
-            format!(
-                "Jellyfin : {} — {}",
-                cfg.jellyfin.url,
-                if cfg.jellyfin_ready() { format!("connecté ({})", cfg.jellyfin.user_name) } else { "non connecté".into() }
-            ),
             format!(
                 "Catalogues : {}",
                 if self.aio_name.is_empty() { if self.svc.aio.enabled() { "injoignable".to_string() } else { "non configuré".into() } } else { format!("{} · {} catalogues", self.aio_name, self.catalogs.len()) }
@@ -3293,27 +3278,12 @@ impl Controller {
                 self.back();
             }
             Nav::Accept => match self.set_focus {
-                0 => self.open_sources_config(),
+                0 => self.open_sc(),
                 1 => self.cycle_keyboard(),
                 2 => self.toggle_audio(),
                 3 => self.update_action(),
-                4 if self.svc.jf_ready() => {
-                    if self.confirmed(21) {
-                        self.update_config(|c| {
-                            c.jellyfin.token.clear();
-                            c.jellyfin.user_id.clear();
-                            c.jellyfin.user_name.clear();
-                        });
-                        self.views.clear();
-                        self.load_tab(TAB_HOME);
-                        self.load_dashboard();
-                        self.toast("Jellyfin déconnecté");
-                    }
-                }
-                4 => self.quick_connect(),
-                5 => self.cycle_anime_library(),
-                6 => self.import_gelato(),
-                7 => {
+                4 => self.import_gelato(),
+                5 => {
                     self.views.clear();
                     self.load_manifest();
                     self.load_tab(self.tab.min(TAB_SHOWS));
@@ -3461,87 +3431,6 @@ impl Controller {
             Err(e) => self.toast(format!("Clavier : {e:#}")),
         }
         self.sync();
-    }
-
-    fn cycle_anime_library(&mut self) {
-        let shows: Vec<Item> = self.views.iter().filter(|v| v.collection_type.as_deref() == Some("tvshows")).cloned().collect();
-        if shows.is_empty() {
-            self.toast("Aucune bibliothèque de séries");
-            return;
-        }
-        let cur = self.anime_library();
-        let idx = cur.and_then(|c| shows.iter().position(|v| v.id == c)).map_or(0, |i| (i + 1) % shows.len());
-        let name = shows[idx].name.clone();
-        self.update_config(|c| c.jellyfin.anime_library = name.clone());
-        self.toast(format!("Bibliothèque anime : {name}"));
-    }
-
-    fn quick_connect(&mut self) {
-        self.qc_gen += 1;
-        let stamp = self.qc_gen;
-        // Client sans jeton : on repart de zéro.
-        let mut cfg = self.svc.cfg.clone();
-        cfg.jellyfin.token.clear();
-        let jf = Jellyfin::new(self.svc.http.clone(), &cfg.jellyfin.url, "", "", &cfg.jellyfin.device_id);
-        self.spawn(async move {
-            let st = match jf.quick_connect_initiate().await {
-                Ok(s) => s,
-                Err(e) => return post(move |c| c.toast(format!("Quick Connect indisponible : {e:#}"))),
-            };
-            let (code, secret) = (st.code.clone(), st.secret.clone());
-            post(move |c| {
-                let ui = c.ui();
-                ui.set_set_has_qr(false);
-                ui.set_set_code(code.into());
-                ui.set_set_code_title("Quick Connect".into());
-                ui.set_set_code_hint("Dans Jellyfin (téléphone ou navigateur) :\nProfil → Quick Connect → saisir ce code".into());
-            });
-            for _ in 0..100 {
-                tokio::time::sleep(Duration::from_secs(3)).await;
-                let mut alive = true;
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                post(move |c| {
-                    let _ = tx.send(c.qc_gen == stamp);
-                });
-                if let Ok(v) = rx.await {
-                    alive = v;
-                }
-                if !alive {
-                    return;
-                }
-                match jf.quick_connect_state(&secret).await {
-                    Ok(s) if s.authenticated => {
-                        let auth = jf.quick_connect_auth(&secret).await;
-                        return post(move |c| {
-                            c.clear_code_card();
-                            match auth {
-                                Ok(a) => {
-                                    c.update_config(|cfg| {
-                                        cfg.jellyfin.token = a.access_token;
-                                        cfg.jellyfin.user_id = a.user.id;
-                                        cfg.jellyfin.user_name = a.user.name.clone();
-                                    });
-                                    c.toast(format!("Connecté à Jellyfin : {}", a.user.name));
-                                    c.views.clear();
-                                    c.load_tab(TAB_HOME);
-                                    c.load_dashboard();
-                                }
-                                Err(e) => c.toast(format!("Échec de l'authentification : {e:#}")),
-                            }
-                            c.sync();
-                        });
-                    }
-                    Ok(_) => {}
-                    Err(e) => log::debug!("quick connect : {e:#}"),
-                }
-            }
-            post(move |c| {
-                if c.qc_gen == stamp {
-                    c.clear_code_card();
-                    c.toast("Code Quick Connect expiré");
-                }
-            });
-        });
     }
 
     fn import_gelato(&mut self) {

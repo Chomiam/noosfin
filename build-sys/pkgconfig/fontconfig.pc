@@ -1,5 +1,5 @@
 # Bazzite n'a pas fontconfig-devel : stub pkg-config qui lie la bibliothèque système.
-libdir=/var/home/chomiam/Projets/noosfin/build-sys/lib
+libdir=${pcfiledir}/../lib
 Name: Fontconfig
 Description: Font configuration and customization library
 Version: 2.16.0

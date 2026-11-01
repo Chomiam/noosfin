@@ -1,132 +1,180 @@
+<div align="center">
+
+<img src="assets/noos-logo.svg" width="120" alt="Noosfin">
+
 # Noosfin
 
-Tableau de bord HTPC pour Bazzite : backend Rust, interface Slint, session KWin (HDR).
-Au démarrage, SDDM ouvre la session **Noosfin HTPC** (session par défaut), depuis laquelle on choisit :
+**Le tableau de bord HTPC pour Bazzite.**
+Allumez le PC, prenez la manette : films, séries, animes, IPTV, YouTube, Steam et bureau KDE, en HDR.
 
-- **Médiathèque** : catalogues AIOStreams (ou Cinemeta) + AniList, sources du moteur intégré, onglets Accueil / Animes / Films / Séries / Historique / Recherche (Jellyfin optionnel)
-- **IPTV** : comptes Xtream Codes et playlists M3U enregistrés, catégories, recherche, favoris
-- **YouTube** : VacuumTube (Flatpak `rocks.shy.VacuumTube`, installation proposée s'il manque)
-- **Steam** : `gamescope-session-plus ogui-steam`
-- **Bureau KDE** : Plasma Wayland
+[![Release](https://img.shields.io/github/v/release/Chomiam/noosfin?style=for-the-badge&color=cba6f7&labelColor=1e1e2e)](https://github.com/Chomiam/noosfin/releases/latest)
+[![Bazzite](https://img.shields.io/badge/Bazzite-KDE-89b4fa?style=for-the-badge&labelColor=1e1e2e)](https://bazzite.gg)
+[![Rust](https://img.shields.io/badge/Rust-Slint-fab387?style=for-the-badge&labelColor=1e1e2e)](https://slint.dev)
+[![Licence](https://img.shields.io/badge/licence-GPL--3.0-a6e3a1?style=for-the-badge&labelColor=1e1e2e)](LICENSE)
 
-### Changement de session (mécanisme Bazzite / SteamOS)
+<img src="docs/screenshots/dashboard.jpg" width="900" alt="Tableau de bord">
 
-| Fichier `/etc/sddm.conf.d/` | Rôle |
-|---|---|
-| `zz-holo-autologin.conf` | défaut Bazzite (écrit par steamos-manager) |
-| `zzs-noosfin-autologin.conf` | **Noosfin par défaut** (installé par `install.sh`, prioritaire) |
-| `zzt-holo-temp-login.conf` | session ponctuelle, prioritaire, effacée au démarrage de la session suivante |
+</div>
 
-« Bureau KDE » et « Steam » posent une session ponctuelle via le D-Bus de steamos-manager
-(`SetTemporarySession`), puis la session Noosfin se termine et SDDM se reconnecte sur la cible.
-À la déconnexion de Plasma ou à la sortie de Steam, on revient à Noosfin. Les raccourcis Bazzite
-(« Passer au bureau » dans Steam, « Retour au mode jeu » dans Plasma) suivent le même chemin.
-Si steamos-manager ne répond pas, `noosfin-session` lance Plasma ou Steam lui-même.
+---
 
-## Installation
+## ⚡ Installation en une ligne
 
 ```bash
-./session/install.sh              # compile, installe dans ~/.local/bin, puis session SDDM (sudo)
-./session/install.sh --user-only  # sans toucher à SDDM
-./session/install.sh --uninstall  # retire la session (Bazzite redémarre comme avant)
+curl -fsSL https://raw.githubusercontent.com/Chomiam/noosfin/main/install.sh | bash
 ```
 
-Au premier lancement : **Paramètres → Connecter Jellyfin (Quick Connect)**, puis saisir le code
-dans Jellyfin (Profil → Quick Connect).
+L'installateur vérifie votre système, propose les options puis installe tout :
 
-## HDR
+```text
+                      ███╗   ██╗ ██████╗  ██████╗ ███████╗███████╗██╗███╗   ██╗
+                      ████╗  ██║██╔═══██╗██╔═══██╗██╔════╝██╔════╝██║████╗  ██║
+                      ██╔██╗ ██║██║   ██║██║   ██║███████╗█████╗  ██║██╔██╗ ██║
+                      ██║╚██╗██║╚██████╔╝╚██████╔╝╚════██║██╔══╝  ██║██║╚██╗██║
+                      ╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ ╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝
+                            Tableau de bord HTPC pour Bazzite  ·  v0.1.0
+  ╭ Vérification du système ─────────────────────────────────────────────────────────────╮
+  │   ✔  Bazzite                   bazzite-deck · Stable (F44)                            │
+  │   ✔  Bureau KDE Plasma         KWin gère le HDR de la session                         │
+  │   ✔  Session Steam Gamescope   disponible : tuile Steam sur le tableau de bord        │
+  │   ✔  Carte graphique           AMD                                                    │
+  │   ✔  Flatpak                   présent (lecteur mpv)                                  │
+  │   ✔  Podman                    présent (FlareSolverr local)                           │
+  ╰───────────────────────────────────────────────────────────────────────────────────────╯
+```
 
-- La session lance `kwin_wayland` seul : il reprend la configuration d'écran de Plasma
-  (`~/.config/kwinoutputconfig.json`), HDR compris. Le bouton HDR du tableau de bord passe par `kscreen-doctor`.
-- La lecture passe par `~/.local/bin/mpv` (Flatpak mpv, `gpu-next` + Vulkan Wayland, `target-colorspace-hint`) :
-  les flux HDR10 / Dolby Vision sont envoyés tels quels à KWin.
+> [!IMPORTANT]
+> Noosfin ne fonctionne **que sur Bazzite**, édition **KDE** (Deck ou bureau, AMD, Intel ou NVIDIA).
+> Les éditions GNOME ne sont pas prises en charge : la session repose sur KWin.
 
-## Moteur de sources intégré
+| Édition | Tableau de bord | Tuile Steam (Gamescope) |
+|---|:---:|:---:|
+| `bazzite-deck` | ✅ | ✅ |
+| `bazzite-deck-nvidia` | ✅ | — |
+| `bazzite` (bureau KDE) | ✅ | — |
+| `bazzite-nvidia` | ✅ | — |
+| `bazzite-gnome`, `bazzite-deck-gnome` | ❌ | ❌ |
 
-Remplace Torrentio / Lumio / StreamFusion : `src/scraper/`.
+## ✨ Fonctionnalités
 
-- **Débrideurs** : AllDebrid (cache vérifié par lot), TorBox (`checkcached`), Real-Debrid (sans vérification, l'API ne le permet plus).
-- **Trackers privés** : Torznab (C411 `https://c411.org/api/torznab`, Tr4ker `https://tr4ker.net/api/torznab/all`, UNIT3D,
-  Ygégé…). Les `.torrent` (passkey) sont envoyés tels quels au débrideur ; quotas respectés (C411 : 15 requêtes / min).
-- **Sources publiques** : YTS, EZTV, The Pirate Bay (apibay), Nyaa, Knaben (méta-moteur : 1337x, TorrentGalaxy,
-  LimeTorrents, RuTracker…), Torrents-CSV, SubsPlease.
-- **Trackers intégrés** : 35 définitions de trackers publics (format Cardigann de Prowlarr, reprises une fois dans
-  `assets/indexers/`) interprétées par `src/scraper/cardigann.rs` : gabarits Go, sélecteurs CSS (`:contains`, `:has`),
-  réponses HTML / JSON / XML, page de détail → magnet. Aucun Prowlarr / Jackett à l'exécution.
-  `noosfin --test-trackers [id…]` les teste tous. Les sites « lents » passent par FlareSolverr (≈ 10 s chacun).
-- **Réseau** : DNS chiffré (DoH Cloudflare / Quad9 / Google) contre les blocages DNS des FAI ; FlareSolverr **local**
-  (conteneur podman `noosfin-flaresolverr` sur 127.0.0.1:8191, lancé au premier besoin) pour les pages Cloudflare et en
-  dernier recours quand la connexion directe échoue.
-- **Tri** : critères ordonnés (cache, langue, sous-titres, résolution, qualité, HDR, codec, seeders, taille, groupe),
-  exclusions (CAM, langues, résolutions, taille). L'épisode exact passe toujours avant un pack.
-- **Animes** : titres romaji + anglais, saison déduite d'AniList (« 2nd Season »), Nyaa + trackers FR, groupes favoris,
-  choix du bon fichier dans les packs.
-- **Configuration** : *Paramètres → Sources & débrideur* affiche un QR code vers une page web locale (jeton aléatoire,
-  clés masquées) ; `noosfin --sources-web` la lance hors interface.
-- **Test en console** : `noosfin --search movie tt0816692 "Interstellar" 2014 --resolve 0`,
-  `noosfin --search episode tt0944947 "Game of Thrones" 3 9`, `noosfin --search anime "Sousou no Frieren 2nd Season" 5`.
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/films.jpg" alt="Films"></td>
+<td width="50%"><img src="docs/screenshots/anime.jpg" alt="Anime"></td>
+</tr>
+<tr>
+<td><b>Médiathèque</b> · tendances, nouveautés et recherche TMDB, fiches et épisodes en français.</td>
+<td><b>Animes</b> · AniList, saisons regroupées comme sur TheTVDB, reprise et épisode suivant.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/sources.jpg" alt="Sources"></td>
+<td width="50%" align="center"><img src="docs/screenshots/phone.jpg" height="380" alt="Configuration sur téléphone"></td>
+</tr>
+<tr>
+<td><b>Moteur de sources intégré</b> · trackers et débrideur, triés selon vos priorités.</td>
+<td><b>Configuration depuis le téléphone</b> · un QR code à l'écran, les clés se tapent sur le mobile.</td>
+</tr>
+</table>
 
-Fichier : `~/.config/noosfin/sources.json` (droits 600).
+- 🖥️ **Session dédiée** : Noosfin s'ouvre au démarrage (SDDM) dans KWin, qui gère le HDR. Le curseur est masqué, tout se fait à la manette ou au clavier.
+- 🔀 **Changement de session** : Bureau KDE et Steam (Gamescope, éditions Deck) en un appui, retour automatique au tableau de bord.
+- 🎬 **Lecture mpv** : `gpu-next` + Vulkan Wayland, HDR10 / Dolby Vision transmis à l'écran, overlay moderne à la manette (pistes audio, sous-titres, infos).
+- 🧲 **Sources** : AllDebrid, TorBox ou Real-Debrid ; trackers privés Torznab (C411, Tr4ker, UNIT3D…) ; Knaben, YTS, EZTV, Nyaa, SubsPlease et 35 trackers publics intégrés (définitions Prowlarr interprétées par l'app, sans Prowlarr).
+- 🎯 **Priorités** : langue (VFF, MULTi, VOSTFR…), sous-titres, résolution, HDR, codec, cache, taille.
+- 🛡️ **Réseau** : DNS chiffré contre les blocages des FAI ; FlareSolverr local (podman) pour les sites Cloudflare.
+- 📺 **IPTV** : Xtream Codes et M3U, catégories, recherche, favoris, décodage matériel selon le GPU.
+- ▶️ **YouTube** : VacuumTube (YouTube TV), installé à la demande.
+- ⭐ **Favoris et historique** enregistrés localement.
+- 🔄 **Mises à jour** depuis GitHub : *Paramètres → Mise à jour*.
 
-## Catalogues (TMDB)
+## 🚀 Premiers pas
 
-Avec une clé API TMDB (saisie sur la page du téléphone) : tendances, au cinéma, populaires, mieux notés, recherche, fiches
-et épisodes en français, titres anglais / originaux transmis au moteur de sources. Sans clé : AIOStreams, sinon Cinemeta.
+1. Au démarrage, Noosfin s'ouvre tout seul (ou lancez « Noosfin » depuis le menu KDE).
+2. **Paramètres → Sources & débrideur** : scannez le QR code avec votre téléphone, puis renseignez
+   - votre clé de débrideur (AllDebrid, TorBox ou Real-Debrid) ;
+   - une clé [TMDB](https://www.themoviedb.org/settings/api) (gratuite) pour les catalogues en français ;
+   - vos trackers privés et vos priorités.
+3. **Paramètres → Clavier physique** si votre clavier n'est pas en AZERTY.
 
-## Clavier physique
+## 🔄 Mise à jour et désinstallation
 
-*Paramètres → Clavier physique* (AZERTY France par défaut). Le script de session écrit
-`~/.local/share/noosfin/xdg/kxkbrc`, lu par le KWin de la session via `XDG_CONFIG_DIRS` : la disposition de Plasma n'est
-pas touchée. Appliqué à la relance de l'interface (le rechargement à chaud de KWin s'est montré instable).
+- **Mise à jour** : *Paramètres → Mise à jour* (vérification automatique au lancement), ou relancez la commande d'installation.
+- **Désinstallation** (la configuration est conservée) :
 
-## Animes
+```bash
+~/.local/bin/noosfin-installer --uninstall
+```
 
-- Catalogues AniList (saison en cours, tendances, populaires), épisodes et vignettes via Kitsu.
-- Sources : moteur intégré (voir plus haut) ; AIOStreams (`kitsu:ID:EP`) seulement s'il est coché en appoint.
-- Liste des sources triée selon `[prefs]` (VOSTFR / MULTI, HDR, résolution, cache debrid).
-- Suivi local des épisodes vus : `~/.local/share/noosfin/state.json` (rangée « Animes en cours »).
-- Les épisodes présents dans la bibliothèque Jellyfin « anime » sont marqués **JELLYFIN** et lus depuis le NAS.
-
-## Lecture (overlay mpv)
-
-`noosfin-mpv` lance le Flatpak mpv comme `~/.local/bin/mpv` (HDR, gpu-next) mais sans le pont manette
-Python : Noosfin relaie la manette à l'overlay `noosfin-osc.lua` (barre, boutons, pistes audio /
-sous-titres, informations de lecture sur Select). Décodage matériel selon le GPU (`hwdec = "auto"`).
-
-## Historique et reprise
-
-Historique de 10 jours (`~/.local/share/noosfin/state.json`), onglet *Historique* : Ⓐ rouvre la fiche,
-Ⓨ retire une entrée, carte « Effacer l'historique ». À la fin d'un épisode, l'épisode suivant est
-proposé (lecture automatique après 10 s).
-
-## Favoris
-
-Enregistrés sur le PC (`~/.local/share/noosfin/state.json`) : Ⓧ ou « ☆ Ajouter aux favoris » sur une fiche ; rangées
-« Mes favoris » dans Accueil et Animes. Les chaînes et contenus IPTV gardent leurs propres favoris.
-
-## Saisons d'animes
-
-AniList sépare chaque saison : la fiche suit les liens suite / préquelle et numérote les saisons comme TheTVDB (via
-ani.zip), le découpage utilisé par TMDB, Plex et Jellyfin (« Saison 3 · partie 2 »). Résumés et épisodes en français via TMDB.
-
-## Commandes
+## 🎮 Commandes
 
 | Manette | Clavier | Action |
 |---|---|---|
-| A | Entrée | Ouvrir / lire |
-| B | Échap | Retour |
-| Y | Tab | Liste des sources |
-| X | F | Favori |
+| Ⓐ | Entrée | Ouvrir / lire |
+| Ⓑ | Échap | Retour |
+| Ⓨ | Tab | Liste des sources |
+| Ⓧ | F | Favori |
 | LB / RB | Page ↑ / ↓ | Onglet précédent / suivant |
+| Select | — | Informations de lecture (dans mpv) |
 | Start / Guide | Début | Tableau de bord |
 
-## Fichiers
+## 🧩 Fonctionnement
 
-- `~/.config/noosfin/config.toml` : Jellyfin, URL du manifest AIOStreams, lecteur, préférences
-- `~/.local/state/noosfin/session.log` : journal de la session
-- `noosfin --windowed` : lancer dans une fenêtre (tests) ; `--media` : ouvrir directement la médiathèque
+<details>
+<summary><b>Session et changement de session</b></summary>
 
-## Compilation sur Bazzite
+Le fichier `/etc/sddm.conf.d/zzs-noosfin-autologin.conf` fait de **Noosfin HTPC** la session par défaut. Sur les éditions
+Deck, « Bureau KDE » et « Steam » posent une session ponctuelle via le D-Bus de steamos-manager
+(`SetTemporarySession`) ; à la déconnexion, SDDM revient sur Noosfin. Sinon, `noosfin-session` lance Plasma lui-même
+et reprend la main à sa fermeture. La session lance `kwin_wayland` seul, avec la configuration d'écran de Plasma
+(HDR compris).
+</details>
 
-L'image n'a pas `fontconfig-devel` : `build-sys/` fournit un `fontconfig.pc` qui lie la bibliothèque
-système (activé par `.cargo/config.toml`).
+<details>
+<summary><b>Moteur de sources</b></summary>
+
+`src/scraper/` interroge en parallèle les trackers privés (Torznab, `.torrent` transmis avec la passkey), les sources
+publiques et les trackers intégrés (`assets/indexers/`, format Cardigann de Prowlarr interprété par
+`src/scraper/cardigann.rs`). Les résultats sont dédupliqués par infohash, triés selon vos critères, le cache du débrideur
+est vérifié, puis le premier lien lisible est envoyé à mpv. Les animes sont cherchés par titres romaji / anglais avec la
+saison déduite d'AniList ; dans un pack, le bon épisode est choisi chez le débrideur.
+
+```bash
+noosfin --search movie tt0816692 "Interstellar" 2014   # recherche en console
+noosfin --test-trackers                                 # teste les trackers intégrés
+```
+</details>
+
+<details>
+<summary><b>Fichiers</b></summary>
+
+| Chemin | Contenu |
+|---|---|
+| `~/.config/noosfin/config.toml` | réglages généraux, lecteur, clavier |
+| `~/.config/noosfin/sources.json` | débrideur, trackers, TMDB, priorités (droits 600) |
+| `~/.local/share/noosfin/state.json` | favoris, historique, reprises |
+| `~/.local/state/noosfin/session.log` | journal de la session |
+</details>
+
+## 🛠️ Compiler depuis les sources
+
+Sur Bazzite (Rust via [rustup](https://rustup.rs)) :
+
+```bash
+git clone https://github.com/Chomiam/noosfin && cd noosfin
+./packaging/dev-install.sh              # compile et installe, puis la session SDDM (sudo)
+./packaging/package.sh                  # archive de release dans dist/
+```
+
+Bazzite n'a pas de paquets `-devel` : `build-sys/` fournit un stub pkg-config pour fontconfig.
+Les releases sont construites par GitHub Actions dans un conteneur Fedora à chaque tag `v*`.
+
+## 🙏 Remerciements
+
+[Bazzite](https://bazzite.gg) · [Slint](https://slint.dev) · [ratatui](https://ratatui.rs) · [mpv](https://mpv.io) ·
+[TMDB](https://www.themoviedb.org) · [AniList](https://anilist.co) · [ani.zip](https://api.ani.zip) ·
+[Prowlarr Indexers](https://github.com/Prowlarr/Indexers) · [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) ·
+[VacuumTube](https://github.com/shy1132/VacuumTube)
+
+Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.
+
+Licence [GPL-3.0](LICENSE).

@@ -3,7 +3,8 @@ name = "noosfin"
 version = "0.1.0"
 edition = "2024"
 description = "Tableau de bord HTPC (KWin HDR) : Plasma, Steam Gamescope et médiathèque Jellyfin/AIOStreams orientée anime"
-license = "MIT"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Chomiam/noosfin"
 
 [dependencies]
 slint = { version = "1.18", features = ["unstable-winit-030"] }
@@ -35,3 +36,6 @@ slint-build = "1.18"
 [profile.release]
 lto = "thin"
 strip = true
+
+[workspace]
+members = [".", "installer"]

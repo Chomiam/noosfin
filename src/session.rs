@@ -202,3 +202,54 @@ pub fn apply_keyboard(code: &str) -> anyhow::Result<()> {
     std::fs::write(&p, format!("[Layout]\nUse=true\nLayoutList={layout}\nVariantList={variant}\n"))?;
     Ok(())
 }
+
+// ─────────────── Édition de Bazzite ───────────────
+
+/// Image Bazzite installée (/usr/share/ublue-os/image-info.json).
+#[derive(Debug, Clone, Default)]
+pub struct Edition {
+    /// ex. « bazzite-deck », « bazzite-nvidia », « bazzite-deck-gnome »
+    pub image: String,
+    /// « kinoite » (KDE) ou « silverblue » (GNOME)
+    pub base: String,
+    pub version: String,
+}
+
+impl Edition {
+    pub fn detect() -> Option<Edition> {
+        // Pour les tests : NOOSFIN_IMAGE=bazzite-nvidia simule une autre édition.
+        if let Ok(image) = std::env::var("NOOSFIN_IMAGE") {
+            return Some(Edition { image, base: "kinoite".into(), version: "test".into() });
+        }
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string("/usr/share/ublue-os/image-info.json").ok()?).ok()?;
+        let image = v["image-name"].as_str()?.to_string();
+        image.starts_with("bazzite").then(|| Edition {
+            image,
+            base: v["base-image-name"].as_str().unwrap_or_default().to_string(),
+            version: v["version-pretty"].as_str().unwrap_or_default().to_string(),
+        })
+    }
+
+    pub fn summary(&self) -> String {
+        format!("Bazzite {} · {} · {}", self.version, self.image, if self.base == "kinoite" { "KDE" } else { &self.base })
+    }
+
+    pub fn deck(&self) -> bool {
+        self.image.starts_with("bazzite-deck")
+    }
+
+    pub fn nvidia(&self) -> bool {
+        self.image.contains("nvidia")
+    }
+
+    /// La session Steam Gamescope n'existe que sur les éditions Deck (hors NVIDIA).
+    pub fn gamescope(&self) -> bool {
+        self.deck() && !self.nvidia()
+    }
+}
+
+/// Tuile « Steam » proposée sur le tableau de bord.
+pub fn gamescope_available() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| Edition::detect().is_some_and(|e| e.gamescope()))
+}

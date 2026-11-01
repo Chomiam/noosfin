@@ -1,8 +1,8 @@
 #!/usr/bin/bash
 # Installation de Noosfin.
-#   ./session/install.sh              compile + installe pour l'utilisateur, puis (sudo) la session SDDM
-#   ./session/install.sh --user-only  sans la partie système
-#   ./session/install.sh --uninstall  retire la session SDDM (Bazzite reprend son démarrage habituel)
+#   ./packaging/dev-install.sh              compile + installe pour l'utilisateur, puis (sudo) la session SDDM
+#   ./packaging/dev-install.sh --user-only  sans la partie système
+#   ./packaging/dev-install.sh --uninstall  retire la session SDDM (Bazzite reprend son démarrage habituel)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 USER_NAME=$(id -un)
@@ -57,4 +57,4 @@ Relogin=true
 SessionDir=/usr/local/share/wayland-sessions,/usr/share/wayland-sessions
 CONF
 echo "OK : la session « Noosfin HTPC » démarrera automatiquement au prochain démarrage."
-echo "Pour revenir au comportement Bazzite : ./session/install.sh --uninstall"
+echo "Pour revenir au comportement Bazzite : ./packaging/dev-install.sh --uninstall"

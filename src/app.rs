@@ -521,6 +521,9 @@ pub struct Controller {
     hero_url: Option<String>,
     /// Animes dont le résumé français a déjà été demandé.
     fr_requested: HashSet<i64>,
+    /// Release GitHub plus récente que la version installée.
+    update: Option<crate::update::Release>,
+    update_busy: bool,
     catalogs: Vec<CatalogDef>,
     aio_name: String,
 
@@ -602,6 +605,8 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
         home: Rows::new(0),
         hero_url: None,
         fr_requested: HashSet::new(),
+        update: None,
+        update_busy: false,
         catalogs: vec![],
         aio_name: String::new(),
         detail: None,
@@ -671,6 +676,7 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
 
     with_ctrl(|c| {
         c.refresh_hdr();
+        c.check_update(true);
         c.load_manifest();
         c.load_dashboard();
         c.load_tab(TAB_HOME);
@@ -1129,6 +1135,7 @@ impl Controller {
         let ui = self.ui();
         ui.set_screen(self.screen);
         ui.set_dash_area(self.dash_area);
+        ui.set_dash_steam(session::gamescope_available());
         ui.set_dash_index(self.dash_index);
         ui.set_hdr_on(self.hdr.enabled);
         ui.set_hdr_available(self.hdr.available);
@@ -1371,8 +1378,9 @@ impl Controller {
 
     fn nav_dash(&mut self, n: Nav) {
         let resume_len = self.dash_items.len() as i32;
+        let steam = session::gamescope_available();
         let area_len = |a: i32| match a {
-            0 => 5,
+            0 => if steam { 5 } else { 4 },
             1 => resume_len,
             _ => 5,
         };
@@ -1390,7 +1398,8 @@ impl Controller {
                     self.dash_index = self.dash_index.min(area_len(a) - 1).max(0);
                 }
             }
-            Nav::Accept => match (self.dash_area, self.dash_index) {
+            // Sans Gamescope, la tuile Steam est absente : les suivantes reculent d'un cran.
+            Nav::Accept => match (self.dash_area, if self.dash_area == 0 && !steam && self.dash_index >= 3 { self.dash_index + 1 } else { self.dash_index }) {
                 (0, 0) => {
                     self.switch_tab(TAB_HOME);
                     self.go(SCR_MEDIA);
@@ -3195,9 +3204,14 @@ impl Controller {
         vec![
             "Sources & débrideur (configurer sur le téléphone)".into(),
             format!("Clavier physique : {}", session::keyboard_label(&self.svc.cfg.session.keyboard)),
+            match (&self.update, self.update_busy) {
+                (_, true) => "Mise à jour en cours…".to_string(),
+                (Some(r), false) => format!("Installer la mise à jour {} (actuelle : {})", r.version, crate::update::VERSION),
+                (None, false) => format!("Rechercher une mise à jour (version {})", crate::update::VERSION),
+            },
             if self.svc.jf_ready() { "Déconnecter Jellyfin".into() } else { "Connecter Jellyfin (Quick Connect)".into() },
             format!("Bibliothèque anime : {}", self.anime_library().and_then(|id| self.views.iter().find(|v| v.id == id).map(|v| v.name.clone())).unwrap_or_else(|| "aucune".into())),
-            "Importer AIOStreams depuis Gelato (NAS)".into(),
+            "Importer AIOStreams depuis Gelato (SSH)".into(),
             "Recharger la médiathèque".into(),
             "Retour".into(),
         ]
@@ -3223,6 +3237,11 @@ impl Controller {
             format!("Sources : {}", self.svc.engine.cfg.summary()),
             format!("Favoris : {} (enregistrés sur ce PC)", self.state.favorites.len()),
             format!("Lecteur : {} · décodage {}", cfg.player.command, if cfg.player.hwdec == "auto" { crate::iptv::hwdec_for_gpu() } else { &cfg.player.hwdec }),
+            format!(
+                "Système : {} — Steam Gamescope {}",
+                session::Edition::detect().map(|e| e.summary()).unwrap_or_else(|| "non Bazzite".into()),
+                if session::gamescope_available() { "disponible" } else { "indisponible (édition non Deck ou NVIDIA)" }
+            ),
             format!("Session HTPC : {}", if session::in_noosfin_session() { "active" } else { "non (lancé hors session noosfin)" }),
             format!("Configuration : {}", crate::config::config_path().display()),
         ];
@@ -3246,7 +3265,8 @@ impl Controller {
             Nav::Accept => match self.set_focus {
                 0 => self.open_sources_config(),
                 1 => self.cycle_keyboard(),
-                2 if self.svc.jf_ready() => {
+                2 => self.update_action(),
+                3 if self.svc.jf_ready() => {
                     if self.confirmed(21) {
                         self.update_config(|c| {
                             c.jellyfin.token.clear();
@@ -3259,10 +3279,10 @@ impl Controller {
                         self.toast("Jellyfin déconnecté");
                     }
                 }
-                2 => self.quick_connect(),
-                3 => self.cycle_anime_library(),
-                4 => self.import_gelato(),
-                5 => {
+                3 => self.quick_connect(),
+                4 => self.cycle_anime_library(),
+                5 => self.import_gelato(),
+                6 => {
                     self.views.clear();
                     self.load_manifest();
                     self.load_tab(self.tab.min(TAB_SHOWS));
@@ -3287,6 +3307,57 @@ impl Controller {
             self.toast(format!("Sauvegarde impossible : {e:#}"));
         }
         self.svc = Services::new(cfg, self.svc.http.clone());
+    }
+
+    // ─────────────── Mises à jour ───────────────
+
+    fn check_update(&mut self, quiet: bool) {
+        let http = self.svc.http.clone();
+        self.spawn(async move {
+            let r = crate::update::check(&http).await;
+            post(move |c| {
+                match r {
+                    Ok(Some(rel)) => {
+                        c.toast(format!("Noosfin {} est disponible · Paramètres → Mise à jour", rel.version));
+                        c.update = Some(rel);
+                    }
+                    Ok(None) if !quiet => c.toast(format!("Noosfin est à jour ({})", crate::update::VERSION)),
+                    Err(e) if !quiet => c.toast(format!("Vérification impossible : {e:#}")),
+                    _ => {}
+                }
+                c.sync();
+            });
+        });
+    }
+
+    fn update_action(&mut self) {
+        if self.update_busy {
+            return;
+        }
+        let Some(rel) = self.update.clone() else { return self.check_update(false) };
+        self.update_busy = true;
+        self.toast(format!("Téléchargement de Noosfin {}…", rel.version));
+        let http = self.svc.http.clone();
+        self.spawn(async move {
+            let r = crate::update::install(&http, &rel).await;
+            post(move |c| {
+                c.update_busy = false;
+                match r {
+                    Ok(()) => {
+                        c.update = None;
+                        if session::in_noosfin_session() {
+                            c.toast(format!("Noosfin {} installé · relance de l'interface", rel.version));
+                            c.switch_session(Target::Restart);
+                        } else {
+                            c.toast(format!("Noosfin {} installé · relancez l'application", rel.version));
+                        }
+                    }
+                    Err(e) => c.toast(format!("Mise à jour impossible : {e:#}")),
+                }
+                c.sync();
+            });
+        });
+        self.sync();
     }
 
     fn cycle_keyboard(&mut self) {
@@ -3384,6 +3455,9 @@ impl Controller {
 
     fn import_gelato(&mut self) {
         let host = self.svc.cfg.aiostreams.gelato_ssh.clone();
+        if host.is_empty() {
+            return self.toast("Renseignez [aiostreams] gelato_ssh = \"utilisateur@serveur\" dans config.toml");
+        }
         self.toast(format!("Lecture de la configuration Gelato sur {host}…"));
         self.spawn(async move {
             let out = tokio::process::Command::new("ssh")

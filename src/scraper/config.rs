@@ -261,10 +261,6 @@ impl Sources {
         let mut s: Sources = std::fs::read_to_string(path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         // Prowlarr n'est plus utilisé : les trackers sont intégrés à l'application.
         s.indexers.retain(|i| i.kind != IndexerKind::Prowlarr);
-        // L'ancien FlareSolverr du NAS est remplacé par l'instance locale gérée par l'app.
-        if s.network.flaresolverr.contains("192.168.1.15") {
-            s.network.flaresolverr = LOCAL_FLARESOLVERR.into();
-        }
         s
     }
 

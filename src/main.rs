@@ -14,6 +14,7 @@ mod scraper;
 mod session;
 mod state;
 mod tmdb;
+mod update;
 
 slint::include_modules!();
 
@@ -64,6 +65,12 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(i) = args.iter().position(|a| a == "--search") {
         return rt.block_on(search_cli(&args[i + 1..]));
+    }
+
+    // Noosfin s'appuie sur Bazzite (KWin, SDDM, steamos-manager, Flatpak mpv).
+    if session::Edition::detect().is_none() {
+        eprintln!("Noosfin ne fonctionne que sur Bazzite (https://bazzite.gg).");
+        std::process::exit(1);
     }
 
     let ui = AppWindow::new()?;

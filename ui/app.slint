@@ -67,6 +67,8 @@ component Dashboard inherits Rectangle {
     in property <string> hdr-output;
     in property <[Card]> resume;
     in property <string> media-status;
+    /// Tuile Steam (éditions Deck de Bazzite, hors NVIDIA).
+    in property <bool> steam: true;
     callback clicked(int, int);
 
     Rectangle {
@@ -88,15 +90,21 @@ component Dashboard inherits Rectangle {
         Text { text: root.date; font-size: 22px; color: Theme.subtext; horizontal-alignment: right; }
     }
 
-    property <length> tile-w: (root.width - 2 * Theme.margin - 4 * 28px) / 5;
+    property <int> tile-count: root.steam ? 5 : 4;
+    property <length> tile-w: (root.width - 2 * Theme.margin - (root.tile-count - 1) * 28px) / root.tile-count;
     property <length> tiles-y: 260px;
     property <length> tiles-h: min(420px, root.height * 0.38);
 
-    for t[i] in [
+    for t[i] in root.steam ? [
         { title: "Médiathèque", sub: "Films, séries, animes", icon: @image-url("../assets/tv.svg"), tint: @linear-gradient(135deg, #89b4fa 0%, #cba6f7 100%) },
         { title: "IPTV", sub: "Xtream Codes · M3U", icon: @image-url("../assets/live.svg"), tint: @linear-gradient(135deg, #f38ba8 0%, #fab387 100%) },
         { title: "YouTube", sub: "VacuumTube", icon: @image-url("../assets/youtube.svg"), tint: @linear-gradient(135deg, #eba0ac 0%, #f38ba8 100%) },
         { title: "Steam", sub: "Gamescope · Big Picture", icon: @image-url("../assets/gamepad.svg"), tint: @linear-gradient(135deg, #a6e3a1 0%, #94e2d5 100%) },
+        { title: "Bureau KDE", sub: "Session Plasma Wayland", icon: @image-url("../assets/desktop.svg"), tint: @linear-gradient(135deg, #fab387 0%, #f9e2af 100%) },
+    ] : [
+        { title: "Médiathèque", sub: "Films, séries, animes", icon: @image-url("../assets/tv.svg"), tint: @linear-gradient(135deg, #89b4fa 0%, #cba6f7 100%) },
+        { title: "IPTV", sub: "Xtream Codes · M3U", icon: @image-url("../assets/live.svg"), tint: @linear-gradient(135deg, #f38ba8 0%, #fab387 100%) },
+        { title: "YouTube", sub: "VacuumTube", icon: @image-url("../assets/youtube.svg"), tint: @linear-gradient(135deg, #eba0ac 0%, #f38ba8 100%) },
         { title: "Bureau KDE", sub: "Session Plasma Wayland", icon: @image-url("../assets/desktop.svg"), tint: @linear-gradient(135deg, #fab387 0%, #f9e2af 100%) },
     ] : Tile {
         x: Theme.margin + i * (root.tile-w + 28px);
@@ -990,6 +998,7 @@ export component AppWindow inherits Window {
     // Tableau de bord
     in property <int> dash-area;
     in property <int> dash-index;
+    in property <bool> dash-steam: true;
     in property <bool> hdr-on;
     in property <bool> hdr-available;
     in property <string> hdr-output;
@@ -1119,6 +1128,7 @@ export component AppWindow inherits Window {
             hdr-output: root.hdr-output;
             resume: root.dash-resume;
             media-status: root.media-status;
+            steam: root.dash-steam;
             clicked(a, i) => { root.click(0, a, i); }
         }
 

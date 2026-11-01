@@ -85,7 +85,7 @@ impl Default for Config {
 impl Default for JellyfinConfig {
     fn default() -> Self {
         Self {
-            url: "http://192.168.1.15:8096".into(),
+            url: String::new(),
             token: String::new(),
             user_id: String::new(),
             user_name: String::new(),
@@ -97,7 +97,7 @@ impl Default for JellyfinConfig {
 
 impl Default for AioConfig {
     fn default() -> Self {
-        Self { manifest_url: String::new(), gelato_ssh: "chomiam@192.168.1.15".into() }
+        Self { manifest_url: String::new(), gelato_ssh: String::new() }
     }
 }
 

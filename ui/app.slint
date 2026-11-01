@@ -1,0 +1,1346 @@
+import { Theme, Card, MediaRow, EpisodeData, SourceData, IptvProfile, FormField } from "theme.slint";
+import { Badge, Button, PosterCard, RowsView, IconButton } from "widgets.slint";
+
+export { Theme, Card, MediaRow, EpisodeData, SourceData, IptvProfile, FormField }
+
+// ─────────────────────────────── Tableau de bord ───────────────────────────────
+
+component Tile inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <image> icon;
+    in property <brush> tint;
+    in property <bool> focused;
+    callback clicked;
+    border-radius: 28px;
+    background: Theme.surface0;
+    clip: true;
+    drop-shadow-blur: focused ? 40px : 0px;
+    drop-shadow-color: #cba6f770;
+
+    Rectangle {
+        opacity: root.focused ? 1 : 0.35;
+        background: root.tint;
+        animate opacity { duration: 180ms; }
+    }
+    Rectangle { background: @linear-gradient(180deg, transparent 35%, #11111bd0 100%); }
+    Image {
+        x: 40px;
+        y: 40px;
+        width: 92px;
+        height: 92px;
+        source: root.icon;
+        colorize: Theme.text;
+    }
+    Text {
+        x: 40px;
+        y: parent.height - 120px;
+        text: root.title;
+        font-size: 34px;
+        font-weight: 900;
+        color: Theme.text;
+    }
+    Text {
+        x: 40px;
+        y: parent.height - 62px;
+        width: parent.width - 80px;
+        text: root.subtitle;
+        font-size: 20px;
+        color: Theme.subtext;
+        overflow: elide;
+    }
+    Rectangle {
+        border-radius: parent.border-radius;
+        border-width: root.focused ? 5px : 0px;
+        border-color: Theme.text;
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+component Dashboard inherits Rectangle {
+    in property <int> area;
+    in property <int> index;
+    in property <string> clock;
+    in property <string> date;
+    in property <bool> hdr-on;
+    in property <bool> hdr-available;
+    in property <string> hdr-output;
+    in property <[Card]> resume;
+    in property <string> media-status;
+    callback clicked(int, int);
+
+    Rectangle {
+        background: @radial-gradient(circle, #313244 0%, #181825 55%, #11111b 100%);
+    }
+    Image {
+        x: Theme.margin - 16px;
+        y: 104px;
+        height: 120px;
+        source: @image-url("../assets/noos-logo-ui.svg");
+    }
+    VerticalLayout {
+        x: parent.width - 520px - Theme.margin;
+        y: 110px;
+        width: 520px;
+        height: 110px;
+        alignment: start;
+        Text { text: root.clock; font-size: 64px; font-weight: 300; color: Theme.text; horizontal-alignment: right; }
+        Text { text: root.date; font-size: 22px; color: Theme.subtext; horizontal-alignment: right; }
+    }
+
+    property <length> tile-w: (root.width - 2 * Theme.margin - 4 * 28px) / 5;
+    property <length> tiles-y: 260px;
+    property <length> tiles-h: min(420px, root.height * 0.38);
+
+    for t[i] in [
+        { title: "Médiathèque", sub: "Films, séries, animes", icon: @image-url("../assets/tv.svg"), tint: @linear-gradient(135deg, #89b4fa 0%, #cba6f7 100%) },
+        { title: "IPTV", sub: "Xtream Codes · M3U", icon: @image-url("../assets/live.svg"), tint: @linear-gradient(135deg, #f38ba8 0%, #fab387 100%) },
+        { title: "YouTube", sub: "VacuumTube", icon: @image-url("../assets/youtube.svg"), tint: @linear-gradient(135deg, #eba0ac 0%, #f38ba8 100%) },
+        { title: "Steam", sub: "Gamescope · Big Picture", icon: @image-url("../assets/gamepad.svg"), tint: @linear-gradient(135deg, #a6e3a1 0%, #94e2d5 100%) },
+        { title: "Bureau KDE", sub: "Session Plasma Wayland", icon: @image-url("../assets/desktop.svg"), tint: @linear-gradient(135deg, #fab387 0%, #f9e2af 100%) },
+    ] : Tile {
+        x: Theme.margin + i * (root.tile-w + 28px);
+        y: root.tiles-y - (root.area == 0 && root.index == i ? 10px : 0px);
+        width: root.tile-w;
+        height: root.tiles-h;
+        title: t.title;
+        subtitle: t.sub;
+        icon: t.icon;
+        tint: t.tint;
+        focused: root.area == 0 && root.index == i;
+        clicked => { root.clicked(0, i); }
+        animate y { duration: 160ms; easing: ease-out; }
+    }
+
+    // Reprise rapide
+    property <length> resume-y: root.tiles-y + root.tiles-h + 40px;
+    if root.resume.length > 0 : Text {
+        x: Theme.margin;
+        y: root.resume-y;
+        text: "Reprendre";
+        font-size: 26px;
+        font-weight: 800;
+        color: root.area == 1 ? Theme.text : Theme.subtext;
+    }
+    if root.resume.length == 0 : Text {
+        x: Theme.margin;
+        y: root.resume-y;
+        text: root.media-status;
+        font-size: 22px;
+        color: Theme.overlay;
+    }
+    Rectangle {
+        y: root.resume-y + 50px;
+        height: 225px + 80px;
+        clip: true;
+        Rectangle {
+            x: Theme.margin - (root.area == 1 ? max(0, root.index - 2) : 0) * (400px + 26px);
+            animate x { duration: 200ms; easing: ease-out; }
+            for c[i] in root.resume : PosterCard {
+                x: i * (400px + 26px);
+                y: 10px;
+                wide: true;
+                card: c;
+                focused: root.area == 1 && root.index == i;
+                clicked => { root.clicked(1, i); }
+            }
+        }
+    }
+
+    // Barre système (en haut)
+    HorizontalLayout {
+        x: Theme.margin;
+        y: 28px;
+        width: root.width - 2 * Theme.margin;
+        height: 64px;
+        spacing: 18px;
+        alignment: start;
+        IconButton {
+            icon: @image-url("../assets/tv.svg");
+            text: root.hdr-available ? (root.hdr-on ? "HDR activé" : "HDR désactivé") : "HDR indisponible";
+            on: root.hdr-on;
+            focused: root.area == 2 && root.index == 0;
+            clicked => { root.clicked(2, 0); }
+        }
+        IconButton {
+            icon: @image-url("../assets/settings.svg");
+            text: "Paramètres";
+            focused: root.area == 2 && root.index == 1;
+            clicked => { root.clicked(2, 1); }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        IconButton {
+            icon: @image-url("../assets/logout.svg");
+            text: "Relancer l'interface";
+            focused: root.area == 2 && root.index == 2;
+            clicked => { root.clicked(2, 2); }
+        }
+        IconButton {
+            icon: @image-url("../assets/restart.svg");
+            text: "Redémarrer";
+            focused: root.area == 2 && root.index == 3;
+            clicked => { root.clicked(2, 3); }
+        }
+        IconButton {
+            icon: @image-url("../assets/power.svg");
+            text: "Éteindre";
+            focused: root.area == 2 && root.index == 4;
+            clicked => { root.clicked(2, 4); }
+        }
+    }
+}
+
+// ─────────────────────────────── Médiathèque ───────────────────────────────
+
+component Hero inherits Rectangle {
+    in property <image> backdrop;
+    in property <string> title;
+    in property <string> meta;
+    in property <string> overview;
+    clip: true;
+    Image {
+        x: parent.width * 0.32;
+        width: parent.width * 0.68;
+        height: parent.height;
+        source: root.backdrop;
+        image-fit: cover;
+        opacity: 0.85;
+    }
+    Rectangle { background: @linear-gradient(90deg, #11111b 30%, #11111bd9 50%, #11111b00 85%); }
+    Rectangle { background: @linear-gradient(0deg, #11111b 0%, #11111b00 45%); }
+    VerticalLayout {
+        x: Theme.margin;
+        y: 104px;
+        width: parent.width * 0.52;
+        height: parent.height - 104px - 24px;
+        spacing: 12px;
+        alignment: end;
+        Text { text: root.title; font-size: 50px; font-weight: 900; color: Theme.text; overflow: elide; }
+        Text { text: root.meta; font-size: 21px; color: Theme.mauve; font-weight: 600; overflow: elide; }
+        Rectangle {
+            height: 21px * 1.4 * 4;
+            clip: true;
+            Text {
+                y: 0;
+                height: parent.height;
+                width: parent.width;
+                text: root.overview;
+                font-size: 21px;
+                color: Theme.subtext;
+                wrap: word-wrap;
+                overflow: elide;
+                vertical-alignment: top;
+            }
+        }
+    }
+}
+
+component TopBar inherits Rectangle {
+    in property <[string]> tabs;
+    in property <int> tab;
+    in property <bool> focused;
+    in property <string> clock;
+    callback tab-clicked(int);
+    height: 96px;
+    Image {
+        x: Theme.margin - 12px;
+        y: 14px;
+        height: 68px;
+        source: @image-url("../assets/noos-logo-ui.svg");
+    }
+    HorizontalLayout {
+        x: 320px;
+        y: 20px;
+        height: 56px;
+        spacing: 10px;
+        alignment: start;
+        for t[i] in root.tabs : Rectangle {
+            width: tt.preferred-width + 44px;
+            border-radius: 28px;
+            background: i == root.tab ? (root.focused ? Theme.text : Theme.surface1) : transparent;
+            tt := Text {
+                text: t;
+                font-size: 22px;
+                font-weight: 700;
+                color: i == root.tab && root.focused ? Theme.crust : (i == root.tab ? Theme.text : Theme.subtext);
+            }
+            TouchArea { clicked => { root.tab-clicked(i); } }
+        }
+    }
+    Text {
+        x: parent.width - Theme.margin - 200px;
+        width: 200px;
+        y: 30px;
+        text: root.clock;
+        font-size: 28px;
+        color: Theme.subtext;
+        horizontal-alignment: right;
+    }
+}
+
+// ─────────────────────────────── Fiche détaillée ───────────────────────────────
+
+component EpisodeCard inherits Rectangle {
+    in property <EpisodeData> ep;
+    in property <bool> focused;
+    callback clicked;
+    width: 384px;
+    height: 216px + 110px;
+    thumb := Rectangle {
+        y: root.focused ? -6px : 0px;
+        animate y { duration: 160ms; easing: ease-out; }
+        width: parent.width;
+        height: 216px;
+        border-radius: Theme.radius;
+        background: Theme.surface0;
+        clip: true;
+        Text { text: root.ep.label; font-size: 42px; font-weight: 900; color: Theme.surface1; }
+        Image { width: parent.width; height: parent.height; source: root.ep.image; image-fit: cover; }
+        if root.ep.progress > 0 : Rectangle {
+            y: parent.height - 8px;
+            height: 8px;
+            background: #00000099;
+            Rectangle { x: 0; width: parent.width * min(1, root.ep.progress); background: Theme.accent; }
+        }
+        if root.ep.watched : Rectangle {
+            x: parent.width - 42px;
+            y: 10px;
+            width: 32px;
+            height: 32px;
+            border-radius: 16px;
+            background: Theme.green;
+            Text { text: "✓"; color: Theme.crust; font-size: 20px; font-weight: 900; }
+        }
+        if root.ep.local : Rectangle {
+            x: 10px;
+            y: 10px;
+            height: 28px;
+            width: 104px;
+            border-radius: 7px;
+            background: #11111bcc;
+            Text { text: "JELLYFIN"; color: Theme.blue; font-size: 14px; font-weight: 800; }
+        }
+    }
+    Rectangle {
+        y: thumb.y - 4px;
+        x: -4px;
+        width: parent.width + 8px;
+        height: thumb.height + 8px;
+        border-radius: Theme.radius + 4px;
+        border-width: root.focused ? 4px : 0px;
+        border-color: Theme.text;
+    }
+    Text {
+        y: 228px;
+        width: parent.width;
+        text: root.ep.label + (root.ep.title != "" ? "  ·  " + root.ep.title : "");
+        font-size: 19px;
+        font-weight: 700;
+        color: root.focused ? Theme.text : Theme.subtext;
+        overflow: elide;
+    }
+    Text {
+        y: 258px;
+        width: parent.width;
+        height: 60px;
+        text: root.ep.overview;
+        font-size: 15px;
+        color: Theme.overlay;
+        wrap: word-wrap;
+        overflow: elide;
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+component Detail inherits Rectangle {
+    in property <image> backdrop;
+    in property <image> poster;
+    in property <string> title;
+    in property <string> meta;
+    in property <string> overview;
+    in property <[string]> badges;
+    in property <[string]> buttons;
+    in property <[string]> seasons;
+    in property <[EpisodeData]> episodes;
+    in property <int> area;
+    in property <int> button;
+    in property <int> season;
+    in property <int> episode;
+    in property <bool> loading;
+    callback clicked(int, int);
+
+    Image { width: parent.width; height: parent.height; source: root.backdrop; image-fit: cover; opacity: 0.55; }
+    Rectangle { background: @linear-gradient(90deg, #11111bf5 25%, #11111bb0 60%, #11111b40 100%); }
+    Rectangle { background: @linear-gradient(0deg, #11111b 15%, #11111b00 60%); }
+
+    property <bool> has-episodes: root.episodes.length > 0 || root.seasons.length > 0;
+
+    Rectangle {
+        x: Theme.margin;
+        y: 70px;
+        width: 260px;
+        height: 390px;
+        border-radius: Theme.radius;
+        clip: true;
+        background: Theme.surface0;
+        drop-shadow-blur: 30px;
+        drop-shadow-color: #00000090;
+        Image { width: parent.width; height: parent.height; source: root.poster; image-fit: cover; }
+    }
+
+    VerticalLayout {
+        x: Theme.margin + 260px + 50px;
+        y: 64px;
+        width: root.width - self.x - Theme.margin;
+        spacing: 16px;
+        alignment: start;
+        Text { text: root.title; font-size: 56px; font-weight: 900; color: Theme.text; wrap: word-wrap; }
+        Text { text: root.meta; font-size: 22px; color: Theme.mauve; font-weight: 600; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            for b in root.badges : Badge { text: b; }
+        }
+        Text {
+            text: root.loading ? "Chargement…" : root.overview;
+            font-size: 21px;
+            color: Theme.subtext;
+            wrap: word-wrap;
+            max-height: 21px * 1.45 * (root.has-episodes ? 4 : 9);
+            overflow: elide;
+        }
+        HorizontalLayout {
+            spacing: 16px;
+            alignment: start;
+            padding-top: 10px;
+            for b[i] in root.buttons : Button {
+                text: b;
+                primary: i == 0;
+                focused: root.area == 0 && root.button == i;
+                clicked => { root.clicked(0, i); }
+            }
+        }
+    }
+
+    // Saisons
+    if root.seasons.length > 0 : Rectangle {
+        y: root.height - 216px - 110px - 60px - 70px;
+        height: 56px;
+        clip: true;
+        HorizontalLayout {
+            x: Theme.margin - (root.area == 1 ? max(0, root.season - 5) * 150px : 0);
+            spacing: 10px;
+            alignment: start;
+            for s[i] in root.seasons : Rectangle {
+                width: st.preferred-width + 40px;
+                border-radius: 26px;
+                background: i == root.season ? (root.area == 1 ? Theme.text : Theme.surface1) : Theme.surface0;
+                st := Text {
+                    text: s;
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: i == root.season && root.area == 1 ? Theme.crust : Theme.text;
+                }
+                TouchArea { clicked => { root.clicked(1, i); } }
+            }
+        }
+    }
+
+    // Épisodes
+    if root.episodes.length > 0 : Rectangle {
+        y: root.height - 216px - 110px - 50px;
+        height: 216px + 120px;
+        clip: true;
+        Rectangle {
+            x: Theme.margin - max(0, root.episode - 1) * (384px + 26px);
+            animate x { duration: 200ms; easing: ease-out; }
+            for e[i] in root.episodes : EpisodeCard {
+                x: i * (384px + 26px);
+                y: 10px;
+                ep: e;
+                focused: root.area == 2 && root.episode == i;
+                clicked => { root.clicked(2, i); }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────── Sources ───────────────────────────────
+
+component Sources inherits Rectangle {
+    in property <string> title;
+    in property <[SourceData]> items;
+    in property <int> current;
+    in property <bool> loading;
+    in property <string> status;
+    callback clicked(int);
+    background: #11111bfc;
+
+    Text { x: Theme.margin; y: 44px; text: "Choisir une source"; font-size: 24px; color: Theme.mauve; font-weight: 700; }
+    Text { x: Theme.margin; y: 78px; width: root.width - 2 * Theme.margin; text: root.title; font-size: 44px; font-weight: 900; color: Theme.text; overflow: elide; }
+    Text {
+        x: Theme.margin;
+        y: 140px;
+        text: root.loading ? "Recherche des sources…" : root.status;
+        font-size: 20px;
+        color: Theme.subtext;
+    }
+
+    property <length> row-h: 118px;
+    property <int> visible-rows: floor((root.height - 210px - 40px) / root.row-h);
+    property <int> first: max(0, min(root.current - 2, root.items.length - root.visible-rows));
+
+    Rectangle {
+        y: 190px;
+        height: root.height - 190px - 30px;
+        clip: true;
+        Rectangle {
+            y: -root.first * root.row-h;
+            animate y { duration: 180ms; easing: ease-out; }
+            for s[i] in root.items : Rectangle {
+                x: Theme.margin;
+                y: i * root.row-h;
+                width: root.width - 2 * Theme.margin;
+                height: root.row-h - 14px;
+                border-radius: Theme.radius;
+                background: i == root.current ? Theme.surface1 : Theme.surface0;
+                border-width: i == root.current ? 3px : 0px;
+                border-color: Theme.text;
+                Rectangle {
+                    x: 18px;
+                    width: 110px;
+                    height: parent.height - 36px;
+                    border-radius: 10px;
+                    background: s.quality == "4K" ? Theme.mauve : (s.quality == "1080p" ? Theme.blue : Theme.surface1);
+                    Text { text: s.quality; font-size: 28px; font-weight: 900; color: Theme.crust; }
+                }
+                VerticalLayout {
+                    x: 150px;
+                    width: parent.width - 150px - 260px;
+                    alignment: center;
+                    spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        if s.hdr != "" : Badge { text: s.hdr; bg: Theme.yellow; fg: Theme.crust; }
+                        if s.origin != "" : Badge { text: s.origin; bg: s.origin == "Jellyfin" ? Theme.blue : Theme.teal; fg: Theme.crust; }
+                        Text { text: s.provider; font-size: 20px; font-weight: 800; color: Theme.text; vertical-alignment: center; }
+                        Text { text: s.tags; font-size: 17px; font-weight: 700; color: Theme.peach; vertical-alignment: center; }
+                    }
+                    Text { text: s.filename; font-size: 18px; color: Theme.subtext; overflow: elide; }
+                    Text { text: s.details; font-size: 16px; color: Theme.overlay; overflow: elide; }
+                }
+                VerticalLayout {
+                    x: parent.width - 250px;
+                    width: 230px;
+                    alignment: center;
+                    Text { text: s.size; font-size: 22px; font-weight: 800; color: Theme.text; horizontal-alignment: right; }
+                    Text { text: s.langs; font-size: 15px; color: Theme.subtext; horizontal-alignment: right; overflow: elide; }
+                }
+                TouchArea { clicked => { root.clicked(i); } }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────── Recherche ───────────────────────────────
+
+component Search inherits Rectangle {
+    in property <string> query;
+    in property <[string]> keys;
+    in property <int> key-focus;
+    in property <bool> keyboard-active;
+    in property <[MediaRow]> rows;
+    in property <[int]> scrolls;
+    in property <int> focus-row;
+    in property <int> focus-col;
+    in property <bool> loading;
+    callback key-clicked(int);
+    callback card-clicked(int, int);
+
+    property <int> cols: 7;
+    property <length> key-size: 74px;
+
+    Rectangle {
+        x: Theme.margin;
+        y: 120px;
+        width: root.cols * (root.key-size + 8px);
+        height: 72px;
+        border-radius: 14px;
+        background: Theme.surface0;
+        Image { x: 18px; width: 32px; height: 32px; source: @image-url("../assets/search.svg"); colorize: Theme.subtext; }
+        Text {
+            x: 64px;
+            width: parent.width - 80px;
+            text: root.query == "" ? "Rechercher un film, une série, un anime…" : root.query + "▏";
+            font-size: 24px;
+            color: root.query == "" ? Theme.overlay : Theme.text;
+            overflow: elide;
+        }
+    }
+    for k[i] in root.keys : Rectangle {
+        x: Theme.margin + mod(i, root.cols) * (root.key-size + 8px);
+        y: 220px + floor(i / root.cols) * (root.key-size + 8px);
+        width: root.key-size;
+        height: root.key-size;
+        border-radius: 12px;
+        background: root.keyboard-active && i == root.key-focus ? Theme.text : Theme.surface0;
+        Text {
+            text: k;
+            font-size: k.character-count > 1 ? 16px : 26px;
+            font-weight: 700;
+            color: root.keyboard-active && i == root.key-focus ? Theme.crust : Theme.text;
+        }
+        TouchArea { clicked => { root.key-clicked(i); } }
+    }
+    RowsView {
+        x: Theme.margin + root.cols * (root.key-size + 8px) + 20px - Theme.margin;
+        y: 110px;
+        width: root.width - self.x;
+        height: root.height - 110px;
+        rows: root.rows;
+        scrolls: root.scrolls;
+        focus-row: root.focus-row;
+        focus-col: root.focus-col;
+        active: !root.keyboard-active;
+        card-clicked(r, c) => { root.card-clicked(r, c); }
+    }
+    if root.loading : Text {
+        x: root.width - 400px;
+        y: 60px;
+        text: "Recherche…";
+        font-size: 22px;
+        color: Theme.subtext;
+    }
+}
+
+// ─────────────────────────────── Paramètres ───────────────────────────────
+
+component Settings inherits Rectangle {
+    in property <[string]> lines;
+    in property <[string]> actions;
+    in property <int> current;
+    in property <string> code;
+    in property <string> code-title;
+    in property <string> code-hint;
+    in property <image> qr;
+    in property <bool> has-qr;
+    callback clicked(int);
+    background: @radial-gradient(circle, #313244 0%, #11111b 100%);
+
+    Text { x: Theme.margin; y: 60px; text: "Paramètres"; font-size: 56px; font-weight: 900; color: Theme.text; }
+    VerticalLayout {
+        x: Theme.margin;
+        y: 160px;
+        width: root.width * 0.46;
+        spacing: 12px;
+        alignment: start;
+        for l in root.lines : Text { text: l; font-size: 22px; color: Theme.subtext; wrap: word-wrap; }
+        Rectangle { height: 24px; }
+        for a[i] in root.actions : Rectangle {
+            height: 64px;
+            border-radius: 16px;
+            background: i == root.current ? Theme.text : Theme.surface0;
+            Text {
+                x: 24px;
+                text: a;
+                font-size: 22px;
+                font-weight: 700;
+                color: i == root.current ? Theme.crust : Theme.text;
+            }
+            TouchArea { clicked => { root.clicked(i); } }
+        }
+    }
+    if root.code != "" || root.has-qr : Rectangle {
+        x: root.width * 0.5;
+        y: 140px;
+        width: root.width * 0.5 - Theme.margin;
+        height: root.has-qr ? 640px : 400px;
+        border-radius: 28px;
+        background: Theme.surface0;
+        VerticalLayout {
+            padding: 36px;
+            spacing: 16px;
+            alignment: center;
+            Text { text: root.code-title; font-size: 30px; font-weight: 800; color: Theme.mauve; horizontal-alignment: center; }
+            if root.has-qr : HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 340px;
+                    height: 340px;
+                    border-radius: 16px;
+                    clip: true;
+                    background: white;
+                    Image { width: parent.width; height: parent.height; source: root.qr; image-rendering: pixelated; }
+                }
+            }
+            if root.code != "" : Text { text: root.code; font-size: root.has-qr ? 72px : 110px; font-weight: 900; color: Theme.text; horizontal-alignment: center; letter-spacing: 10px; }
+            Text { text: root.code-hint; font-size: 20px; color: Theme.subtext; horizontal-alignment: center; wrap: word-wrap; }
+        }
+    }
+}
+
+// ─────────────────────────────── IPTV ───────────────────────────────
+
+component KeyGrid inherits Rectangle {
+    in property <[string]> keys;
+    in property <int> current;
+    in property <bool> active;
+    in property <int> cols: 7;
+    in property <length> key-size: 66px;
+    callback clicked(int);
+    width: root.cols * (root.key-size + 8px);
+    height: ceil(root.keys.length / root.cols) * (root.key-size + 8px);
+    for k[i] in root.keys : Rectangle {
+        x: mod(i, root.cols) * (root.key-size + 8px);
+        y: floor(i / root.cols) * (root.key-size + 8px);
+        width: root.key-size;
+        height: root.key-size;
+        border-radius: 12px;
+        background: root.active && i == root.current ? Theme.text : Theme.surface0;
+        Text {
+            text: k;
+            font-size: k.character-count > 1 ? 15px : 24px;
+            font-weight: 700;
+            color: root.active && i == root.current ? Theme.crust : Theme.text;
+        }
+        TouchArea { clicked => { root.clicked(i); } }
+    }
+}
+
+component IptvProfiles inherits Rectangle {
+    in property <[IptvProfile]> items;
+    in property <int> current;
+    callback clicked(int);
+    background: @radial-gradient(circle, #313244 0%, #11111b 100%);
+    Image { x: Theme.margin; y: 56px; width: 64px; height: 64px; source: @image-url("../assets/live.svg"); colorize: Theme.pink; }
+    Text { x: Theme.margin + 88px; y: 56px; text: "IPTV"; font-size: 56px; font-weight: 900; color: Theme.text; }
+    Text { x: Theme.margin; y: 140px; text: "Choisissez un profil enregistré pour vous connecter en un appui."; font-size: 22px; color: Theme.subtext; }
+    property <length> row-h: 104px;
+    property <int> first: max(0, root.current - 6);
+    Rectangle {
+        y: 200px;
+        height: root.height - 200px - 70px;
+        clip: true;
+        for p[i] in root.items : Rectangle {
+            x: Theme.margin;
+            y: (i - root.first) * root.row-h;
+            width: min(1100px, root.width - 2 * Theme.margin);
+            height: root.row-h - 14px;
+            border-radius: 18px;
+            background: i == root.current ? Theme.text : (p.action ? Theme.mantle : Theme.surface0);
+            border-width: p.action ? 2px : 0px;
+            border-color: Theme.surface1;
+            Rectangle {
+                x: 20px;
+                width: 150px;
+                height: 38px;
+                border-radius: 10px;
+                background: p.action ? transparent : (i == root.current ? Theme.crust : Theme.surface1);
+                Text { text: p.kind; font-size: p.action ? 30px : 15px; font-weight: 800; color: i == root.current && !p.action ? Theme.text : (i == root.current ? Theme.crust : Theme.pink); }
+            }
+            Text { x: 192px; y: 14px; text: p.name; font-size: 26px; font-weight: 800; color: i == root.current ? Theme.crust : Theme.text; }
+            Text { x: 192px; y: 52px; width: parent.width - 210px; text: p.detail; font-size: 18px; color: i == root.current ? Theme.surface0 : Theme.subtext; overflow: elide; }
+            TouchArea { clicked => { root.clicked(i); } }
+        }
+    }
+}
+
+component IptvForm inherits Rectangle {
+    in property <string> title;
+    in property <[FormField]> fields;
+    in property <int> current;
+    in property <bool> kb;
+    in property <[string]> keys;
+    in property <int> key;
+    in property <string> error;
+    in property <bool> busy;
+    in property <image> qr;
+    in property <bool> has-qr;
+    in property <string> hint;
+    in property <string> submit: "Se connecter et enregistrer";
+    callback clicked(int, int);
+    background: @radial-gradient(circle, #313244 0%, #11111b 100%);
+    Text { x: Theme.margin; y: 56px; text: root.title; font-size: 48px; font-weight: 900; color: Theme.text; }
+    property <length> col-w: min(860px, root.width - 2 * Theme.margin - 560px);
+    for f[i] in root.fields : Rectangle {
+        x: Theme.margin;
+        y: 160px + i * 120px;
+        width: root.col-w;
+        height: 104px;
+        Text { x: 0; y: 0; width: parent.width; text: f.label; font-size: 19px; font-weight: 700; color: i == root.current ? Theme.mauve : Theme.subtext; }
+        Rectangle {
+            y: 32px;
+            height: 64px;
+            border-radius: 14px;
+            background: Theme.surface0;
+            border-width: i == root.current ? 3px : 0px;
+            border-color: root.kb ? Theme.mauve : Theme.text;
+            Text {
+                x: 20px;
+                width: parent.width - 40px;
+                text: f.value == "" ? f.placeholder : f.value + (i == root.current ? "▏" : "");
+                font-size: 22px;
+                color: f.value == "" ? Theme.overlay : Theme.text;
+                overflow: elide;
+            }
+            TouchArea { clicked => { root.clicked(0, i); } }
+        }
+    }
+    HorizontalLayout {
+        x: Theme.margin;
+        y: 160px + root.fields.length * 120px + 20px;
+        height: 60px;
+        spacing: 16px;
+        alignment: start;
+        Button { text: root.busy ? "Connexion…" : root.submit; primary: true; focused: root.current == root.fields.length; clicked => { root.clicked(0, root.fields.length); } }
+        Button { text: "Annuler"; focused: root.current == root.fields.length + 1; clicked => { root.clicked(0, root.fields.length + 1); } }
+    }
+    Text {
+        x: Theme.margin;
+        y: 160px + root.fields.length * 120px + 110px;
+        width: root.col-w;
+        text: root.error;
+        font-size: 20px;
+        color: root.error == "Connexion…" ? Theme.subtext : Theme.pink;
+        wrap: word-wrap;
+    }
+    KeyGrid {
+        x: root.width - self.width - Theme.margin;
+        y: 160px;
+        keys: root.keys;
+        current: root.key;
+        active: root.kb;
+        clicked(i) => { root.clicked(-1, i); }
+    }
+    if root.has-qr : HorizontalLayout {
+        x: Theme.margin;
+        y: 160px + root.fields.length * 120px + 170px;
+        width: root.col-w;
+        height: 260px;
+        spacing: 28px;
+        Rectangle {
+            width: 260px;
+            border-radius: 14px;
+            clip: true;
+            background: white;
+            Image { width: parent.width; height: parent.height; source: root.qr; image-rendering: pixelated; }
+        }
+        Text { text: root.hint; font-size: 19px; color: Theme.subtext; wrap: word-wrap; vertical-alignment: center; }
+    }
+}
+
+component IptvBrowse inherits Rectangle {
+    in property <[string]> tabs;
+    in property <int> tab;
+    in property <string> profile-name;
+    in property <[string]> cats;
+    in property <int> cat;
+    in property <int> area;
+    in property <bool> searching;
+    in property <string> query;
+    in property <[string]> keys;
+    in property <int> key;
+    in property <[Card]> grid;
+    in property <int> grid-focus;
+    in property <int> cols;
+    in property <bool> tile;
+    in property <string> status;
+    in property <bool> loading;
+    callback clicked(int, int);
+
+    // Onglets
+    HorizontalLayout {
+        x: Theme.margin;
+        y: 26px;
+        height: 56px;
+        spacing: 10px;
+        alignment: start;
+        for t[i] in root.tabs : Rectangle {
+            width: tt.preferred-width + 44px;
+            border-radius: 28px;
+            background: i == root.tab ? Theme.surface1 : transparent;
+            tt := Text { text: t; font-size: 22px; font-weight: 700; color: i == root.tab ? Theme.text : Theme.subtext; }
+            TouchArea { clicked => { root.clicked(-2, i); } }
+        }
+    }
+    Text { x: root.width - Theme.margin - 600px; width: 600px; y: 38px; text: root.profile-name + "   ·   " + root.status; font-size: 20px; color: Theme.subtext; horizontal-alignment: right; overflow: elide; }
+
+    property <length> left-w: 430px;
+    property <length> top: 110px;
+
+    // Colonne de gauche : catégories ou clavier
+    if !root.searching : Rectangle {
+        x: Theme.margin;
+        y: root.top;
+        width: root.left-w;
+        height: root.height - root.top - 70px;
+        clip: true;
+        property <length> rh: 54px;
+        property <int> visible-n: floor(self.height / self.rh);
+        property <int> first: max(0, min(root.cat - 3, root.cats.length - self.visible-n));
+        for c[i] in root.cats : Rectangle {
+            y: (i - parent.first) * parent.rh;
+            height: parent.rh - 6px;
+            border-radius: 12px;
+            background: i == root.cat ? (root.area == 0 ? Theme.text : Theme.surface1) : (i == 0 ? Theme.mantle : transparent);
+            Text {
+                x: 18px;
+                width: parent.width - 30px;
+                text: c;
+                font-size: 20px;
+                font-weight: i == root.cat ? 800 : 500;
+                color: i == root.cat && root.area == 0 ? Theme.crust : (i == 0 ? Theme.mauve : Theme.text);
+                overflow: elide;
+            }
+            TouchArea { clicked => { root.clicked(-1, i); } }
+        }
+    }
+    if root.searching : VerticalLayout {
+        x: Theme.margin;
+        y: root.top;
+        width: root.left-w;
+        spacing: 16px;
+        alignment: start;
+        Rectangle {
+            height: 60px;
+            border-radius: 14px;
+            background: Theme.surface0;
+            Text { x: 18px; width: parent.width - 30px; text: root.query == "" ? "Rechercher…" : root.query + "▏"; font-size: 22px; color: root.query == "" ? Theme.overlay : Theme.text; overflow: elide; }
+        }
+        KeyGrid {
+            keys: root.keys;
+            current: root.key;
+            active: root.area == 0;
+            key-size: 54px;
+            clicked(i) => { root.clicked(-1, i); }
+        }
+    }
+
+    // Grille
+    property <length> gx: Theme.margin + root.left-w + 36px;
+    property <length> gw: root.width - root.gx - Theme.margin;
+    property <length> cw: (root.gw - (root.cols - 1) * 20px) / root.cols;
+    property <length> ch: root.tile ? root.cw * 0.62 : root.cw * 1.5;
+    for c[i] in root.grid : Rectangle {
+        x: root.gx + mod(i, root.cols) * (root.cw + 20px);
+        y: root.top + 6px + floor(i / root.cols) * (root.ch + 68px);
+        width: root.cw;
+        height: root.ch + 60px;
+        Rectangle {
+            height: root.ch;
+            y: 0;
+            border-radius: Theme.radius;
+            background: root.tile ? Theme.surface0 : Theme.mantle;
+            clip: true;
+            border-width: i == root.grid-focus ? 4px : 0px;
+            border-color: Theme.text;
+            drop-shadow-blur: i == root.grid-focus ? 24px : 0px;
+            drop-shadow-color: #cba6f780;
+            Text { text: c.title; width: parent.width - 20px; wrap: word-wrap; horizontal-alignment: center; font-size: 17px; color: Theme.overlay; }
+            Image {
+                x: root.tile ? parent.width * 0.15 : 0;
+                y: root.tile ? parent.height * 0.15 : 0;
+                width: root.tile ? parent.width * 0.7 : parent.width;
+                height: root.tile ? parent.height * 0.7 : parent.height;
+                source: c.image;
+                image-fit: root.tile ? contain : cover;
+            }
+            if c.badge != "" : Rectangle {
+                x: parent.width - 40px;
+                y: 8px;
+                width: 32px;
+                height: 32px;
+                border-radius: 16px;
+                background: Theme.yellow;
+                Text { text: c.badge; font-size: 18px; color: Theme.crust; font-weight: 900; }
+            }
+        }
+        Text { y: root.ch + 8px; width: parent.width; text: c.title; font-size: 17px; font-weight: i == root.grid-focus ? 800 : 500; color: i == root.grid-focus ? Theme.text : Theme.subtext; overflow: elide; }
+        Text { y: root.ch + 32px; width: parent.width; text: c.subtitle; font-size: 15px; color: Theme.overlay; overflow: elide; }
+        TouchArea { clicked => { root.clicked(0, i); } }
+    }
+    if root.loading : VerticalLayout {
+        x: root.gx;
+        y: root.top + 100px;
+        width: root.gw;
+        Text { text: root.status; font-size: 30px; color: Theme.subtext; horizontal-alignment: center; }
+        Text { text: "Le premier chargement d'un gros catalogue peut prendre une à deux minutes ;\nil est ensuite gardé 24 h en cache (Ⓧ sur le profil pour le recharger)."; font-size: 18px; color: Theme.overlay; horizontal-alignment: center; }
+    }
+}
+
+// ─────────────────────────────── Fenêtre ───────────────────────────────
+
+export component AppWindow inherits Window {
+    title: "Noosfin";
+    background: Theme.crust;
+    preferred-width: 1920px;
+    preferred-height: 1080px;
+    default-font-size: 20px;
+
+    // 0 tableau de bord · 1 médiathèque · 2 fiche · 3 sources · 4 recherche · 5 paramètres
+    in property <int> screen;
+    in property <string> clock;
+    in property <string> date;
+    in property <string> toast;
+    in property <bool> playing;
+    in property <string> playing-title;
+    in property <string> hints;
+
+    // Tableau de bord
+    in property <int> dash-area;
+    in property <int> dash-index;
+    in property <bool> hdr-on;
+    in property <bool> hdr-available;
+    in property <string> hdr-output;
+    in property <[Card]> dash-resume;
+    in property <string> media-status;
+
+    // Médiathèque
+    in property <[string]> tabs: ["Accueil", "Animes", "Films", "Séries", "Historique", "Recherche"];
+    in property <int> tab;
+    in property <[MediaRow]> rows;
+    in property <[int]> scrolls;
+    in property <int> focus-row;
+    in property <int> focus-col;
+    in property <image> hero-image;
+    in property <string> hero-title;
+    in property <string> hero-meta;
+    in property <string> hero-overview;
+
+    // Fiche
+    in property <image> d-backdrop;
+    in property <image> d-poster;
+    in property <string> d-title;
+    in property <string> d-meta;
+    in property <string> d-overview;
+    in property <[string]> d-badges;
+    in property <[string]> d-buttons;
+    in property <[string]> d-seasons;
+    in property <[EpisodeData]> d-episodes;
+    in property <int> d-area;
+    in property <int> d-button;
+    in property <int> d-season;
+    in property <int> d-episode;
+    in property <bool> d-loading;
+
+    // Sources
+    in property <string> s-title;
+    in property <[SourceData]> s-items;
+    in property <int> s-focus;
+    in property <bool> s-loading;
+    in property <string> s-status;
+
+    // Recherche
+    in property <string> q;
+    in property <[string]> q-keys;
+    in property <int> q-key;
+    in property <bool> q-keyboard: true;
+    in property <[MediaRow]> q-rows;
+    in property <[int]> q-scrolls;
+    in property <int> q-row;
+    in property <int> q-col;
+    in property <bool> q-loading;
+
+    // Paramètres
+    in property <[string]> set-lines;
+    in property <[string]> set-actions;
+    in property <int> set-focus;
+    in property <string> set-code;
+
+    // Paramètres : carte de code (Quick Connect / Trakt)
+    in property <string> set-code-title: "Quick Connect";
+    in property <string> set-code-hint;
+    in property <image> set-code-qr;
+    in property <bool> set-has-qr;
+    in property <image> form-qr;
+    in property <bool> form-has-qr;
+    in property <string> form-hint;
+    in property <string> form-submit: "Se connecter et enregistrer";
+
+    // Épisode suivant
+    in property <bool> next-visible;
+    in property <string> next-title;
+    in property <image> next-image;
+    in property <int> next-count;
+
+    // Fenêtre de confirmation
+    in property <bool> dlg-visible;
+    in property <string> dlg-title;
+    in property <string> dlg-text;
+    in property <int> dlg-focus;
+    in property <bool> dlg-busy;
+
+    // IPTV
+    in property <[IptvProfile]> iptv-profiles;
+    in property <int> iptv-sel;
+    in property <string> form-title;
+    in property <[FormField]> form-fields;
+    in property <int> form-focus;
+    in property <bool> form-kb;
+    in property <[string]> form-keys;
+    in property <int> form-key;
+    in property <string> form-error;
+    in property <bool> form-busy;
+    in property <[string]> iptv-tabs;
+    in property <int> iptv-tab;
+    in property <string> iptv-profile-name;
+    in property <[string]> iptv-cats;
+    in property <int> iptv-cat;
+    in property <int> iptv-area;
+    in property <bool> iptv-searching;
+    in property <string> iptv-query;
+    in property <int> iptv-key;
+    in property <[Card]> iptv-grid;
+    in property <int> iptv-grid-focus;
+    in property <int> iptv-cols: 5;
+    in property <bool> iptv-tile;
+    in property <string> iptv-status;
+    in property <bool> iptv-loading;
+
+    callback key(string) -> bool;
+    callback click(int, int, int);
+
+    fs := FocusScope {
+        key-pressed(event) => {
+            if (event.modifiers.control || event.modifiers.alt) {
+                return reject;
+            }
+            return root.key(event.text) ? accept : reject;
+        }
+
+        if root.screen == 0 : Dashboard {
+            area: root.dash-area;
+            index: root.dash-index;
+            clock: root.clock;
+            date: root.date;
+            hdr-on: root.hdr-on;
+            hdr-available: root.hdr-available;
+            hdr-output: root.hdr-output;
+            resume: root.dash-resume;
+            media-status: root.media-status;
+            clicked(a, i) => { root.click(0, a, i); }
+        }
+
+        if root.screen == 1 : Rectangle {
+            Hero {
+                y: 0;
+                height: min(520px, root.height * 0.47);
+                backdrop: root.hero-image;
+                title: root.hero-title;
+                meta: root.hero-meta;
+                overview: root.hero-overview;
+            }
+            TopBar {
+                y: 0;
+                tabs: root.tabs;
+                tab: root.tab;
+                focused: root.focus-row < 0;
+                clock: root.clock;
+                tab-clicked(i) => { root.click(1, -1, i); }
+            }
+            RowsView {
+                y: min(520px, root.height * 0.47);
+                height: root.height - self.y;
+                rows: root.rows;
+                scrolls: root.scrolls;
+                focus-row: root.focus-row;
+                focus-col: root.focus-col;
+                active: root.focus-row >= 0;
+                card-clicked(r, c) => { root.click(1, r, c); }
+            }
+        }
+
+        if root.screen == 2 || root.screen == 3 : Detail {
+            backdrop: root.d-backdrop;
+            poster: root.d-poster;
+            title: root.d-title;
+            meta: root.d-meta;
+            overview: root.d-overview;
+            badges: root.d-badges;
+            buttons: root.d-buttons;
+            seasons: root.d-seasons;
+            episodes: root.d-episodes;
+            area: root.d-area;
+            button: root.d-button;
+            season: root.d-season;
+            episode: root.d-episode;
+            loading: root.d-loading;
+            clicked(a, i) => { root.click(2, a, i); }
+        }
+
+        if root.screen == 3 : Sources {
+            title: root.s-title;
+            items: root.s-items;
+            current: root.s-focus;
+            loading: root.s-loading;
+            status: root.s-status;
+            clicked(i) => { root.click(3, 0, i); }
+        }
+
+        if root.screen == 4 : Search {
+            query: root.q;
+            keys: root.q-keys;
+            key-focus: root.q-key;
+            keyboard-active: root.q-keyboard;
+            rows: root.q-rows;
+            scrolls: root.q-scrolls;
+            focus-row: root.q-row;
+            focus-col: root.q-col;
+            loading: root.q-loading;
+            key-clicked(i) => { root.click(4, -1, i); }
+            card-clicked(r, c) => { root.click(4, r, c); }
+        }
+
+        if root.screen == 5 : Settings {
+            lines: root.set-lines;
+            actions: root.set-actions;
+            current: root.set-focus;
+            code: root.set-code;
+            code-title: root.set-code-title;
+            code-hint: root.set-code-hint;
+            qr: root.set-code-qr;
+            has-qr: root.set-has-qr;
+            clicked(i) => { root.click(5, 0, i); }
+        }
+
+        if root.screen == 6 : IptvProfiles {
+            items: root.iptv-profiles;
+            current: root.iptv-sel;
+            clicked(i) => { root.click(6, 0, i); }
+        }
+
+        if root.screen == 7 : IptvForm {
+            title: root.form-title;
+            fields: root.form-fields;
+            current: root.form-focus;
+            kb: root.form-kb;
+            keys: root.form-keys;
+            key: root.form-key;
+            error: root.form-error;
+            busy: root.form-busy;
+            qr: root.form-qr;
+            has-qr: root.form-has-qr;
+            hint: root.form-hint;
+            submit: root.form-submit;
+            clicked(a, i) => { root.click(7, a, i); }
+        }
+
+        if root.screen == 8 : IptvBrowse {
+            tabs: root.iptv-tabs;
+            tab: root.iptv-tab;
+            profile-name: root.iptv-profile-name;
+            cats: root.iptv-cats;
+            cat: root.iptv-cat;
+            area: root.iptv-area;
+            searching: root.iptv-searching;
+            query: root.iptv-query;
+            keys: root.q-keys;
+            key: root.iptv-key;
+            grid: root.iptv-grid;
+            grid-focus: root.iptv-grid-focus;
+            cols: root.iptv-cols;
+            tile: root.iptv-tile;
+            status: root.iptv-status;
+            loading: root.iptv-loading;
+            clicked(a, i) => { root.click(8, a, i); }
+        }
+
+        // Aide des touches
+        if root.hints != "" && root.screen != 0 : Rectangle {
+            x: parent.width - self.width - Theme.margin + 16px;
+            y: parent.height - 54px;
+            width: ht.preferred-width + 32px;
+            height: 40px;
+            border-radius: 20px;
+            background: #11111bd9;
+            ht := Text { text: root.hints; font-size: 17px; color: Theme.subtext; }
+        }
+
+        if root.playing : Rectangle {
+            background: #11111bee;
+            VerticalLayout {
+                alignment: center;
+                spacing: 20px;
+                Text { text: "Lecture en cours"; font-size: 28px; color: Theme.mauve; horizontal-alignment: center; }
+                Text { text: root.playing-title; font-size: 44px; font-weight: 900; color: Theme.text; horizontal-alignment: center; }
+            }
+        }
+
+        if root.next-visible && !root.playing : Rectangle {
+            x: parent.width - self.width - Theme.margin;
+            y: parent.height - self.height - 90px;
+            width: 640px;
+            height: 220px;
+            border-radius: 24px;
+            background: Theme.mantle;
+            border-width: 2px;
+            border-color: Theme.mauve;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            Rectangle {
+                x: 20px;
+                y: 20px;
+                width: 320px * 9 / 16 * 16 / 9 * 0.5;
+                height: parent.height - 40px;
+                border-radius: 14px;
+                clip: true;
+                background: Theme.surface0;
+                Image { width: parent.width; height: parent.height; source: root.next-image; image-fit: cover; }
+            }
+            VerticalLayout {
+                x: 210px;
+                y: 20px;
+                width: parent.width - 230px;
+                height: parent.height - 40px;
+                spacing: 8px;
+                Text { text: "Épisode suivant dans " + root.next-count + " s"; font-size: 20px; color: Theme.mauve; font-weight: 700; }
+                Text { text: root.next-title; font-size: 24px; font-weight: 800; color: Theme.text; wrap: word-wrap; vertical-stretch: 1; overflow: elide; }
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+                    Button { text: "Ⓐ Lire maintenant"; focused: true; clicked => { root.click(9, 0, 0); } }
+                    Text { text: "Ⓑ Annuler"; font-size: 18px; color: Theme.subtext; vertical-alignment: center; }
+                }
+            }
+        }
+
+        if root.dlg-visible : Rectangle {
+            background: #11111bc0;
+            Rectangle {
+                width: 860px;
+                height: 340px;
+                border-radius: 28px;
+                background: Theme.mantle;
+                border-width: 2px;
+                border-color: Theme.surface1;
+                VerticalLayout {
+                    padding: 44px;
+                    spacing: 20px;
+                    Text { text: root.dlg-title; font-size: 34px; font-weight: 900; color: Theme.text; }
+                    Text { text: root.dlg-text; font-size: 21px; color: Theme.subtext; wrap: word-wrap; vertical-stretch: 1; }
+                    if !root.dlg-busy : HorizontalLayout {
+                        spacing: 16px;
+                        alignment: end;
+                        Button { text: "Installer"; primary: true; focused: root.dlg-focus == 0; clicked => { root.click(10, 0, 0); } }
+                        Button { text: "Annuler"; focused: root.dlg-focus == 1; clicked => { root.click(10, 0, 1); } }
+                    }
+                }
+            }
+        }
+
+        if root.toast != "" : Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - 130px;
+            width: min(parent.width - 200px, tt.preferred-width + 60px);
+            height: 64px;
+            border-radius: 32px;
+            background: Theme.surface1;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000080;
+            tt := Text { text: root.toast; font-size: 21px; color: Theme.text; }
+        }
+    }
+
+    init => { fs.focus(); }
+}

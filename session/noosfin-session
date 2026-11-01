@@ -1,0 +1,74 @@
+#!/usr/bin/bash
+# Session HTPC Noosfin, session SDDM par défaut (voir install.sh).
+#
+#   KWin (gestion HDR, mêmes réglages d'écran que Plasma) + tableau de bord Noosfin
+#     ├─ « Bureau KDE » / « Steam » : le tableau de bord pose une session ponctuelle
+#     │   steamos-manager (zzt-holo-temp-login.conf) et écrit « relogin » → on termine
+#     │   la session, SDDM se reconnecte sur Plasma / Steam, puis revient ici à la déconnexion.
+#     └─ « Relancer l'interface » : on relance simplement KWin + le tableau de bord.
+#
+# Repli si steamos-manager ne répond pas : « plasma » / « steam » lancent la session
+# depuis cette boucle et on revient au tableau de bord quand elle se termine.
+
+BIN="${NOOSFIN_BIN:-$HOME/.local/bin/noosfin}"
+NEXT="${XDG_RUNTIME_DIR:-/run/user/$UID}/noosfin-next"
+CONF="$HOME/.config/noosfin/config.toml"
+LOG="$HOME/.local/state/noosfin/session.log"
+
+mkdir -p "$(dirname "$LOG")"
+[ -f "$LOG" ] && [ "$(stat -c %s "$LOG")" -gt 1000000 ] && mv -f "$LOG" "$LOG.old"
+exec >>"$LOG" 2>&1
+
+steam_client() {
+    grep -oP '^steam_client\s*=\s*"\K[^"]+' "$CONF" 2>/dev/null || echo ogui-steam
+}
+
+run_plasma() {
+    echo "[$(date '+%F %T')] → Plasma"
+    env -u NOOSFIN_SESSION /usr/libexec/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland
+}
+
+run_steam() {
+    echo "[$(date '+%F %T')] → Steam ($(steam_client))"
+    env -u NOOSFIN_SESSION gamescope-session-plus "$(steam_client)"
+}
+
+# Clavier physique choisi dans les paramètres (section [session], clé keyboard, ex. « fr », « ch(fr) »).
+write_kxkbrc() {
+    local kb layout variant=""
+    kb=$(grep -oP '^keyboard\s*=\s*"\K[^"]+' "$CONF" 2>/dev/null || echo fr)
+    layout=${kb%%(*}
+    [[ $kb == *"("* ]] && { variant=${kb#*(}; variant=${variant%)}; }
+    mkdir -p "$HOME/.local/share/noosfin/xdg"
+    printf '[Layout]\nUse=true\nLayoutList=%s\nVariantList=%s\n' "$layout" "$variant" > "$HOME/.local/share/noosfin/xdg/kxkbrc"
+}
+
+fails=0
+while true; do
+    write_kxkbrc
+    rm -f "$NEXT"
+    start=$(date +%s)
+    echo "[$(date '+%F %T')] KWin + tableau de bord"
+    # kxkbrc propre à la session (clavier physique choisi dans les paramètres de Noosfin).
+    NOOSFIN_SESSION=1 XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=KDE KDE_SESSION_VERSION=6 \
+        XDG_CONFIG_DIRS="$HOME/.local/share/noosfin/xdg:${XDG_CONFIG_DIRS:-/etc/xdg}" \
+        kwin_wayland --xwayland --no-lockscreen --no-global-shortcuts --exit-with-session="$BIN"
+    choice=$(cat "$NEXT" 2>/dev/null)
+    rm -f "$NEXT"
+    case "$choice" in
+        plasma) fails=0; run_plasma ;;
+        steam)  fails=0; run_steam ;;
+        relogin) echo "[$(date '+%F %T')] fin de session, SDDM ouvre la session ponctuelle"; exit 0 ;;
+        restart) fails=0 ;;
+        *)
+            # Plantage : on réessaie, puis repli sur Plasma pour ne jamais bloquer l'écran.
+            if (( $(date +%s) - start < 20 )); then fails=$((fails + 1)); else fails=0; fi
+            echo "[$(date '+%F %T')] tableau de bord arrêté sans choix (échecs rapides : $fails)"
+            if (( fails >= 3 )); then
+                fails=0
+                run_plasma
+            fi
+            sleep 1
+            ;;
+    esac
+done

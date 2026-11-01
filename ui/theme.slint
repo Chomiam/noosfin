@@ -1,0 +1,73 @@
+// Palette Catppuccin Mocha (assortie au logo noos)
+export global Theme {
+    out property <color> crust: #11111b;
+    out property <color> mantle: #181825;
+    out property <color> base: #1e1e2e;
+    out property <color> surface0: #313244;
+    out property <color> surface1: #45475a;
+    out property <color> overlay: #6c7086;
+    out property <color> subtext: #a6adc8;
+    out property <color> text: #cdd6f4;
+    out property <color> blue: #89b4fa;
+    out property <color> mauve: #cba6f7;
+    out property <color> pink: #f38ba8;
+    out property <color> green: #a6e3a1;
+    out property <color> peach: #fab387;
+    out property <color> yellow: #f9e2af;
+    out property <color> teal: #94e2d5;
+    out property <brush> accent: @linear-gradient(120deg, #89b4fa 0%, #cba6f7 55%, #f38ba8 100%);
+    out property <length> radius: 14px;
+    out property <length> margin: 64px;
+}
+
+export struct Card {
+    key: string,
+    title: string,
+    subtitle: string,
+    image: image,
+    progress: float,
+    badge: string,
+    watched: bool,
+}
+
+export struct MediaRow {
+    title: string,
+    wide: bool,
+    items: [Card],
+}
+
+export struct EpisodeData {
+    key: string,
+    label: string,
+    title: string,
+    overview: string,
+    image: image,
+    progress: float,
+    watched: bool,
+    local: bool,
+}
+
+export struct SourceData {
+    quality: string,
+    hdr: string,
+    provider: string,
+    filename: string,
+    details: string,
+    size: string,
+    langs: string,
+    tags: string,
+    origin: string,
+}
+
+export struct IptvProfile {
+    name: string,
+    kind: string,
+    detail: string,
+    action: bool,
+}
+
+export struct FormField {
+    label: string,
+    value: string,
+    placeholder: string,
+}

@@ -1,0 +1,211 @@
+import { Theme, Card, MediaRow } from "theme.slint";
+
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <color> bg: Theme.surface1;
+    in property <color> fg: Theme.text;
+    height: 30px;
+    width: t.preferred-width + 20px;
+    border-radius: 8px;
+    background: root.bg;
+    t := Text {
+        text: root.text;
+        color: root.fg;
+        font-size: 17px;
+        font-weight: 700;
+        vertical-alignment: center;
+    }
+}
+
+export component Button inherits Rectangle {
+    in property <string> text;
+    in property <bool> focused;
+    in property <bool> primary;
+    callback clicked;
+    height: 60px;
+    width: max(170px, t.preferred-width + 56px);
+    border-radius: 30px;
+    background: focused ? Theme.text : (primary ? Theme.surface1 : Theme.surface0);
+    animate background { duration: 140ms; }
+    t := Text {
+        text: root.text;
+        color: root.focused ? Theme.crust : Theme.text;
+        font-size: 22px;
+        font-weight: 700;
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component PosterCard inherits Rectangle {
+    in property <Card> card;
+    in property <bool> focused;
+    in property <bool> wide;
+    callback clicked;
+    width: wide ? 400px : 210px;
+    height: (wide ? 225px : 315px) + 70px;
+
+    img := Rectangle {
+        y: root.focused ? -6px : 0px;
+        animate y { duration: 160ms; easing: ease-out; }
+        width: parent.width;
+        height: root.wide ? 225px : 315px;
+        border-radius: Theme.radius;
+        background: Theme.surface0;
+        clip: true;
+        drop-shadow-blur: root.focused ? 28px : 0px;
+        drop-shadow-color: #89b4fa80;
+        Text {
+            text: root.card.title;
+            color: Theme.overlay;
+            width: parent.width - 24px;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            font-size: 18px;
+        }
+        Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.card.image;
+            image-fit: cover;
+        }
+        if root.card.progress > 0 : Rectangle {
+            y: parent.height - 8px;
+            height: 8px;
+            background: #00000099;
+            Rectangle {
+                x: 0;
+                width: parent.width * min(1, root.card.progress);
+                background: Theme.accent;
+            }
+        }
+        if root.card.watched : Rectangle {
+            x: parent.width - 42px;
+            y: 10px;
+            width: 32px;
+            height: 32px;
+            border-radius: 16px;
+            background: Theme.green;
+            Text { text: "✓"; color: Theme.crust; font-size: 20px; font-weight: 900; }
+        }
+        if root.card.badge != "" : Rectangle {
+            x: 10px;
+            y: 10px;
+            height: 28px;
+            width: bt.preferred-width + 16px;
+            border-radius: 7px;
+            background: #11111bcc;
+            bt := Text { text: root.card.badge; color: Theme.yellow; font-size: 15px; font-weight: 800; }
+        }
+    }
+    Rectangle {
+        y: img.y - 4px;
+        x: -4px;
+        width: parent.width + 8px;
+        height: img.height + 8px;
+        border-radius: Theme.radius + 4px;
+        border-width: root.focused ? 4px : 0px;
+        border-color: Theme.text;
+    }
+    Text {
+        y: img.height + 12px;
+        width: parent.width;
+        text: root.card.title;
+        color: root.focused ? Theme.text : Theme.subtext;
+        font-size: 19px;
+        font-weight: root.focused ? 700 : 500;
+        overflow: elide;
+    }
+    Text {
+        y: img.height + 40px;
+        width: parent.width;
+        text: root.card.subtitle;
+        color: Theme.overlay;
+        font-size: 16px;
+        overflow: elide;
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+// Liste verticale de rangées horizontales, défilement piloté par le focus.
+export component RowsView inherits Rectangle {
+    in property <[MediaRow]> rows;
+    in property <[int]> scrolls;
+    in property <int> focus-row;
+    in property <int> focus-col;
+    in property <bool> active: true;
+    callback card-clicked(int, int);
+    clip: true;
+
+    // Hauteur fixe pour toutes les rangées : le défilement reste un simple multiple.
+    property <length> row-h-poster: 315px + 70px + 64px;
+    property <length> row-h-wide: root.row-h-poster;
+
+    content := Rectangle {
+        y: -max(0, root.focus-row) * root.row-h-poster;
+        animate y { duration: 220ms; easing: ease-out; }
+        for row[ri] in root.rows : Rectangle {
+            x: 0;
+            y: ri * root.row-h-poster;
+            width: root.width;
+            height: row.wide ? root.row-h-wide : root.row-h-poster;
+            Text {
+                x: Theme.margin;
+                y: 6px;
+                text: row.title;
+                color: (root.active && ri == root.focus-row) ? Theme.text : Theme.subtext;
+                font-size: 26px;
+                font-weight: 800;
+            }
+            Rectangle {
+                y: 52px;
+                height: parent.height - 52px;
+                x: Theme.margin - (ri < root.scrolls.length ? root.scrolls[ri] : 0) * ((row.wide ? 400px : 210px) + 26px);
+                animate x { duration: 200ms; easing: ease-out; }
+                for card[ci] in row.items : PosterCard {
+                    x: ci * ((row.wide ? 400px : 210px) + 26px);
+                    y: 10px;
+                    card: card;
+                    wide: row.wide;
+                    focused: root.active && ri == root.focus-row && ci == root.focus-col;
+                    clicked => { root.card-clicked(ri, ci); }
+                }
+            }
+        }
+    }
+}
+
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> text;
+    in property <bool> focused;
+    in property <bool> on;
+    callback clicked;
+    height: 64px;
+    width: lbl.preferred-width + 92px;
+    border-radius: 32px;
+    background: focused ? Theme.text : Theme.surface0;
+    animate background { duration: 140ms; }
+    HorizontalLayout {
+        padding-left: 22px;
+        padding-right: 26px;
+        spacing: 14px;
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 28px;
+                height: 28px;
+                colorize: root.focused ? Theme.crust : (root.on ? Theme.green : Theme.text);
+            }
+        }
+        lbl := Text {
+            text: root.text;
+            vertical-alignment: center;
+            color: root.focused ? Theme.crust : Theme.text;
+            font-size: 21px;
+            font-weight: 700;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}

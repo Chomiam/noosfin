@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Lanceur mpv de Noosfin : identique au wrapper ~/.local/bin/mpv (Flatpak mpv, HDR),
+# sans le pont manette Python : c'est Noosfin qui relaie la manette à l'overlay
+# (script-message noosfin-pad), pour éviter les commandes en double.
+unset LD_LIBRARY_PATH LD_PRELOAD NODE_OPTIONS
+
+if [ -n "${GAMESCOPE_WAYLAND_DISPLAY:-}" ]; then
+  unset WAYLAND_DISPLAY
+  export XDG_SESSION_TYPE=x11 ENABLE_GAMESCOPE_WSI=1 ENABLE_HDR_WSI=1
+  exec /usr/bin/flatpak run io.mpv.Mpv --gpu-context=x11vk --no-input-terminal --fs --no-border "$@" </dev/null
+fi
+
+# KWin (session Noosfin ou Plasma) : Vulkan Wayland natif + wp_color_manager_v1 pour le HDR
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" XDG_SESSION_TYPE=wayland ENABLE_HDR_WSI=1
+exec /usr/bin/flatpak run io.mpv.Mpv --gpu-context=waylandvk --no-input-terminal --fs --no-border "$@" </dev/null

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Noosfin · Sources</title>
+<style>
+  :root {
+    --crust: #11111b; --mantle: #181825; --base: #1e1e2e; --s0: #313244; --s1: #45475a;
+    --ov: #6c7086; --sub: #a6adc8; --text: #cdd6f4; --mauve: #cba6f7; --blue: #89b4fa;
+    --green: #a6e3a1; --red: #f38ba8; --peach: #fab387; --yellow: #f9e2af;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--crust); color: var(--text); font: 16px/1.45 system-ui, -apple-system, "Noto Sans", sans-serif; padding: 0 16px 120px; }
+  header { padding: 22px 0 8px; }
+  h1 { margin: 0; font-size: 26px; background: linear-gradient(120deg, var(--blue), var(--mauve) 55%, var(--red)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header p { margin: 4px 0 0; color: var(--sub); font-size: 14px; }
+  section { background: var(--base); border-radius: 16px; padding: 16px; margin: 14px 0; }
+  h2 { margin: 0 0 10px; font-size: 18px; color: var(--mauve); }
+  h3 { margin: 14px 0 6px; font-size: 15px; color: var(--sub); font-weight: 600; }
+  label { display: block; color: var(--sub); font-size: 13px; margin: 10px 0 4px; }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--s1); background: var(--mantle); color: var(--text); font-size: 16px;
+  }
+  textarea { min-height: 70px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .toggle { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--s0); }
+  .toggle:last-child { border-bottom: 0; }
+  .toggle small { display: block; color: var(--ov); }
+  input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--mauve); flex: none; }
+  button { border: 0; border-radius: 12px; padding: 11px 14px; background: var(--s0); color: var(--text); font-size: 15px; font-weight: 600; }
+  button.primary { background: var(--mauve); color: var(--crust); }
+  button.small { padding: 6px 10px; font-size: 14px; flex: none; }
+  .card { background: var(--mantle); border-radius: 14px; padding: 12px; margin: 10px 0; border: 1px solid var(--s0); }
+  .card .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .card .head b { font-size: 16px; }
+  .msg { font-size: 14px; margin-top: 8px; min-height: 1em; }
+  .ok { color: var(--green); } .err { color: var(--red); }
+  .order li { display: flex; align-items: center; gap: 8px; background: var(--mantle); border-radius: 10px; padding: 8px 10px; margin: 6px 0; list-style: none; }
+  .order { padding: 0; margin: 0; }
+  .order li span { flex: 1; }
+  .order li.off span { color: var(--ov); text-decoration: line-through; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .chips button { font-size: 14px; padding: 8px 12px; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--crust) 30%); display: flex; gap: 10px; }
+  footer button { flex: 1; padding: 15px; font-size: 17px; }
+  a { color: var(--blue); }
+  .hint { color: var(--ov); font-size: 13px; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Noosfin · Sources</h1>
+  <p>Débrideur, catalogues, trackers et priorités. Les clés restent sur votre PC.</p>
+</header>
+
+<section>
+  <h2>Débrideur</h2>
+  <label>Service</label>
+  <select id="debrid-service">
+    <option value="none">Aucun</option>
+    <option value="alldebrid">AllDebrid</option>
+    <option value="torbox">TorBox</option>
+    <option value="realdebrid">Real-Debrid</option>
+  </select>
+  <label>Clé API <span id="debrid-link"></span></label>
+  <input type="password" id="debrid-key" autocomplete="off" placeholder="Clé API">
+  <div class="toggle"><div>Lancer le téléchargement si pas en cache<small>Sinon la source est ignorée</small></div><input type="checkbox" id="debrid-dl"></div>
+  <div class="row"><button onclick="test('debrid')">Tester la clé</button></div>
+  <div class="msg" id="msg-debrid"></div>
+</section>
+
+<section>
+  <h2>Catalogues &amp; fiches</h2>
+  <label>Clé API TMDB (v3) · <a href="https://www.themoviedb.org/settings/api" target="_blank">obtenir la clé</a></label>
+  <input type="password" id="tmdb-key" autocomplete="off" placeholder="Clé API TMDB">
+  <label>Langue des fiches</label>
+  <select id="tmdb-lang">
+    <option value="fr-FR">Français (France)</option>
+    <option value="fr-CA">Français (Québec)</option>
+    <option value="en-US">Anglais</option>
+  </select>
+  <p class="hint">Tendances, populaires, recherche, affiches et résumés. Sans clé : AIOStreams ou Cinemeta.</p>
+  <div class="row"><button onclick="test('tmdb')">Tester la clé</button></div>
+  <div class="msg" id="msg-tmdb"></div>
+</section>
+
+<section>
+  <h2>Trackers privés</h2>
+  <div id="indexers"></div>
+  <h3>Ajouter</h3>
+  <div class="chips">
+    <button onclick="addIndexer('c411')">C411</button>
+    <button onclick="addIndexer('tr4ker')">Tr4ker</button>
+    <button onclick="addIndexer('torznab')">Autre (Torznab)</button>
+  </div>
+  <p class="hint">Tout tracker privé exposant une API Torznab (UNIT3D, YGG via Ygégé, Sharewood…) : URL + clé API de votre compte.</p>
+</section>
+
+<section>
+  <h2>Sources publiques</h2>
+  <div class="toggle"><div>Knaben<small>Méta-moteur : 1337x, TorrentGalaxy, LimeTorrents, TPB, RuTracker…</small></div><input type="checkbox" id="pub-knaben"></div>
+  <div class="toggle"><div>Torrents-CSV<small>Index public</small></div><input type="checkbox" id="pub-torrentscsv"></div>
+  <div class="toggle"><div>YTS<small>Films (VO)</small></div><input type="checkbox" id="pub-yts"></div>
+  <div class="toggle"><div>EZTV<small>Séries (VO)</small></div><input type="checkbox" id="pub-eztv"></div>
+  <div class="toggle"><div>The Pirate Bay<small>Films &amp; séries</small></div><input type="checkbox" id="pub-tpb"></div>
+  <div class="toggle"><div>Nyaa<small>Animes</small></div><input type="checkbox" id="pub-nyaa"></div>
+  <div class="toggle"><div>SubsPlease<small>Animes</small></div><input type="checkbox" id="pub-subsplease"></div>
+  <div class="toggle"><div>AIOStreams<small>Ancienne instance, en appoint</small></div><input type="checkbox" id="pub-aiostreams"></div>
+  <h3>Trackers intégrés</h3>
+  <p class="hint">Définitions reprises de Prowlarr, interrogées directement par Noosfin. « Lent » : protégé par Cloudflare, passe par FlareSolverr (≈ 10 s).</p>
+  <div id="trackers"></div>
+</section>
+
+<section>
+  <h2>Réseau</h2>
+  <label>DNS chiffré (contre les blocages DNS des FAI)</label>
+  <select id="net-dns">
+    <option value="cloudflare">Cloudflare (1.1.1.1)</option>
+    <option value="quad9">Quad9 (9.9.9.9)</option>
+    <option value="google">Google (8.8.8.8)</option>
+    <option value="system">DNS du système</option>
+  </select>
+  <label>FlareSolverr (pages protégées par Cloudflare)</label>
+  <select id="net-flare-mode">
+    <option value="local">Intégré (conteneur podman lancé par Noosfin)</option>
+    <option value="url">Autre instance (URL)</option>
+    <option value="">Désactivé</option>
+  </select>
+  <input type="text" id="net-flare" placeholder="http://hôte:8191" style="margin-top:8px">
+  <label>Délai par source (secondes)</label>
+  <input type="number" id="net-timeout" min="5" max="60">
+  <div class="row"><button onclick="test('network')">Tester le réseau</button></div>
+  <div class="msg" id="msg-network"></div>
+</section>
+
+<section>
+  <h2>Priorités de tri</h2>
+  <p class="hint">Le premier critère départage tout ; les suivants ne servent qu'en cas d'égalité.</p>
+  <ul class="order" id="order"></ul>
+  <h3>Langues audio</h3>
+  <ul class="order" id="languages"></ul>
+  <h3>Sous-titres</h3>
+  <ul class="order" id="subtitles"></ul>
+  <h3>Résolutions</h3>
+  <ul class="order" id="resolutions"></ul>
+  <h3>Qualité de la source</h3>
+  <ul class="order" id="qualities"></ul>
+  <h3>HDR</h3>
+  <ul class="order" id="hdr"></ul>
+  <h3>Codecs</h3>
+  <ul class="order" id="codecs"></ul>
+  <div class="toggle"><div>Exclure CAM / TS / TC</div><input type="checkbox" id="rk-cam"></div>
+  <div class="toggle"><div>Uniquement les sources en cache<small>AllDebrid / TorBox</small></div><input type="checkbox" id="rk-cached"></div>
+  <label>Taille maximale (Go, 0 = illimitée)</label>
+  <input type="number" id="rk-size" min="0" step="0.5">
+  <label>Nombre maximal de résultats</label>
+  <input type="number" id="rk-max" min="10" max="200">
+</section>
+
+<section>
+  <h2>Animes</h2>
+  <h3>Langues (animes)</h3>
+  <ul class="order" id="anime-languages"></ul>
+  <label>Groupes de release favoris (un par ligne)</label>
+  <textarea id="anime-groups"></textarea>
+  <p class="hint">Recherche dédiée : Nyaa et les trackers cochés « animes », par titre romaji / anglais + numéro d'épisode ; les packs de saison sont acceptés et le bon fichier est choisi chez le débrideur.</p>
+</section>
+
+<footer>
+  <button class="primary" onclick="save()">Enregistrer</button>
+</footer>
+
+<script>
+const T = new URLSearchParams(location.search).get('t') || '';
+let cfg = null;
+
+const LABELS = {
+  cached: 'En cache chez le débrideur', language: 'Langue audio', subtitles: 'Sous-titres', resolution: 'Résolution',
+  quality: 'Qualité de la source', hdr: 'HDR / Dolby Vision', codec: 'Codec', size: 'Taille (plus gros d\'abord)',
+  seeders: 'Seeders', group: 'Groupe de release favori',
+  vff: 'VFF (France)', vfq: 'VFQ (Québec)', vf2: 'VF2 (les deux)', truefrench: 'TRUEFRENCH', multi: 'MULTi (VF + VO)',
+  vostfr: 'VOSTFR', vo: 'VO seule', fr: 'Français', en: 'Anglais',
+  remux: 'REMUX', bluray: 'BluRay', 'web-dl': 'WEB-DL', webrip: 'WEBRip', hdtv: 'HDTV',
+  dv: 'Dolby Vision', 'hdr10+': 'HDR10+', hdr10: 'HDR10', hlg: 'HLG', sdr: 'SDR',
+  hevc: 'HEVC (x265)', av1: 'AV1', avc: 'AVC (x264)',
+};
+const ALL = {
+  order: ['cached', 'language', 'resolution', 'quality', 'hdr', 'subtitles', 'codec', 'seeders', 'size', 'group'],
+  languages: ['multi', 'vff', 'truefrench', 'vfq', 'vf2', 'vostfr', 'vo'],
+  subtitles: ['fr', 'en'],
+  resolutions: ['2160p', '1080p', '720p', '480p'],
+  qualities: ['remux', 'bluray', 'web-dl', 'webrip', 'hdtv'],
+  hdr: ['dv', 'hdr10+', 'hdr10', 'hlg', 'sdr'],
+  codecs: ['hevc', 'av1', 'avc'],
+};
+const PRESETS = {
+  c411: { name: 'C411', kind: 'torznab', url: 'https://c411.org/api/torznab', private: true, min_interval_ms: 4100, anime: true },
+  tr4ker: { name: 'Tr4ker', kind: 'torznab', url: 'https://tr4ker.net/api/torznab/all', private: true, min_interval_ms: 1000, anime: true },
+  torznab: { name: 'Torznab', kind: 'torznab', url: '', private: true, min_interval_ms: 1000, anime: true },
+};
+const DEBRID_LINKS = {
+  alldebrid: 'https://alldebrid.com/apikeys/', torbox: 'https://torbox.app/settings', realdebrid: 'https://real-debrid.com/apitoken',
+};
+
+const $ = id => document.getElementById(id);
+const PUBLIC = ['yts', 'eztv', 'tpb', 'nyaa', 'knaben', 'torrentscsv', 'subsplease', 'aiostreams'];
+const NATIVE_TEST = ['knaben', 'torrentscsv', 'subsplease', 'yts', 'tpb'];
+let TRACKERS = [];
+
+function renderTrackers() {
+  const box = $('trackers');
+  box.innerHTML = '';
+  const flag = l => ({ fr: '🇫🇷', en: '🇬🇧', ru: '🇷🇺', zh: '🇨🇳', ko: '🇰🇷', bg: '🇧🇬' })[(l || '').slice(0, 2)] || '';
+  TRACKERS.forEach(t => {
+    const on = cfg.public.trackers.includes(t.id);
+    const d = document.createElement('div');
+    d.className = 'toggle';
+    d.innerHTML = `<div>${flag(t.language)} ${t.name}<small>${t.anime ? 'Animes · ' : ''}${t.cloudflare ? 'Lent (Cloudflare) · ' : ''}<a href="#" data-act="test">tester</a> <span class="msg" id="msg-tr-${t.id}"></span></small></div><input type="checkbox" ${on ? 'checked' : ''}>`;
+    d.querySelector('input').onchange = e => {
+      cfg.public.trackers = cfg.public.trackers.filter(x => x !== t.id);
+      if (e.target.checked) cfg.public.trackers.push(t.id);
+    };
+    d.querySelector('[data-act=test]').onclick = e => { e.preventDefault(); testTracker(t.id); };
+    box.append(d);
+  });
+}
+
+async function testTracker(id) {
+  const el = $('msg-tr-' + id);
+  el.className = 'msg'; el.textContent = '…';
+  try {
+    const r = await (await fetch(`/api/test?t=${T}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ what: 'tracker', id, config: collect() }) })).json();
+    el.className = 'msg ' + (r.ok ? 'ok' : 'err'); el.textContent = (r.ok ? '✓ ' : '✕ ') + r.message;
+  } catch (e) { el.className = 'msg err'; el.textContent = String(e); }
+}
+
+// Liste ordonnable : `enabled` = sous-ensemble ordonné, `excluded` = valeurs barrées (exclues).
+function orderList(el, all, enabled, excluded, onChange) {
+  const state = { items: [...enabled, ...all.filter(x => !enabled.includes(x))], excluded: new Set(excluded || []) };
+  const render = () => {
+    el.innerHTML = '';
+    state.items.forEach((v, i) => {
+      const li = document.createElement('li');
+      if (state.excluded.has(v)) li.className = 'off';
+      li.innerHTML = `<span>${i + 1}. ${LABELS[v] || v}</span>`;
+      const up = document.createElement('button'); up.className = 'small'; up.textContent = '↑';
+      up.onclick = () => { if (i > 0) { [state.items[i - 1], state.items[i]] = [state.items[i], state.items[i - 1]]; render(); onChange(state); } };
+      const down = document.createElement('button'); down.className = 'small'; down.textContent = '↓';
+      down.onclick = () => { if (i < state.items.length - 1) { [state.items[i + 1], state.items[i]] = [state.items[i], state.items[i + 1]]; render(); onChange(state); } };
+      const off = document.createElement('button'); off.className = 'small'; off.textContent = state.excluded.has(v) ? '✓' : '✕';
+      off.title = 'Exclure / réactiver';
+      off.onclick = () => { state.excluded.has(v) ? state.excluded.delete(v) : state.excluded.add(v); render(); onChange(state); };
+      li.append(up, down, off);
+      el.append(li);
+    });
+  };
+  render();
+  return state;
+}
+
+let lists = {};
+
+function renderIndexers() {
+  const box = $('indexers');
+  box.innerHTML = '';
+  if (!cfg.indexers.length) box.innerHTML = '<p class="hint">Aucun indexeur.</p>';
+  cfg.indexers.forEach((ix, i) => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `
+      <div class="head"><b>${ix.name || 'Indexeur'}</b><input type="checkbox" ${ix.enabled ? 'checked' : ''} data-k="enabled"></div>
+      <label>Nom</label><input type="text" value="${ix.name}" data-k="name">
+      <label>URL</label><input type="text" value="${ix.url}" data-k="url" placeholder="https://…/api/torznab">
+      <label>Clé API</label><input type="password" value="${ix.api_key}" data-k="api_key" autocomplete="off">
+      <div class="toggle"><div>Tracker privé<small>Envoie le .torrent au débrideur</small></div><input type="checkbox" ${ix.private ? 'checked' : ''} data-k="private"></div>
+      <div class="toggle"><div>Utiliser pour les animes</div><input type="checkbox" ${ix.anime ? 'checked' : ''} data-k="anime"></div>
+      <label>Délai entre requêtes (ms)</label><input type="number" value="${ix.min_interval_ms}" data-k="min_interval_ms">
+      <div class="row"><button data-act="test">Tester</button><button data-act="del">Supprimer</button></div>
+      <div class="msg" id="msg-ix-${i}"></div>`;
+    d.querySelectorAll('[data-k]').forEach(inp => {
+      inp.onchange = () => {
+        const k = inp.dataset.k;
+        ix[k] = inp.type === 'checkbox' ? inp.checked : (inp.type === 'number' ? Number(inp.value) : inp.value);
+        if (k === 'name') d.querySelector('.head b').textContent = inp.value;
+      };
+    });
+    d.querySelector('[data-act=test]').onclick = () => test('indexer', i);
+    d.querySelector('[data-act=del]').onclick = () => { cfg.indexers.splice(i, 1); renderIndexers(); };
+    box.append(d);
+  });
+}
+
+function addIndexer(p) {
+  cfg.indexers.push({ ...PRESETS[p], api_key: '', enabled: true });
+  renderIndexers();
+}
+
+function fill() {
+  $('debrid-service').value = cfg.debrid.service;
+  $('debrid-key').value = cfg.debrid.api_key;
+  $('debrid-dl').checked = cfg.debrid.download_uncached;
+  const link = () => { const u = DEBRID_LINKS[$('debrid-service').value]; $('debrid-link').innerHTML = u ? `· <a href="${u}" target="_blank">obtenir la clé</a>` : ''; };
+  $('debrid-service').onchange = link; link();
+  for (const k of PUBLIC) $('pub-' + k).checked = cfg.public[k];
+  $('tmdb-key').value = cfg.metadata.tmdb_key;
+  $('tmdb-lang').value = cfg.metadata.language || 'fr-FR';
+  $('net-dns').value = cfg.network.dns;
+  const fl = cfg.network.flaresolverr;
+  $('net-flare-mode').value = fl === 'local' ? 'local' : (fl ? 'url' : '');
+  $('net-flare').value = fl === 'local' ? '' : fl;
+  const flareMode = () => $('net-flare').style.display = $('net-flare-mode').value === 'url' ? '' : 'none';
+  $('net-flare-mode').onchange = flareMode; flareMode();
+  $('net-timeout').value = cfg.network.timeout_secs;
+  const r = cfg.ranking;
+  lists.order = orderList($('order'), ALL.order, r.order, ALL.order.filter(x => !r.order.includes(x)), () => {});
+  lists.languages = orderList($('languages'), ALL.languages, r.languages, r.excluded_languages, () => {});
+  lists.subtitles = orderList($('subtitles'), ALL.subtitles, r.subtitles, ALL.subtitles.filter(x => !r.subtitles.includes(x)), () => {});
+  lists.resolutions = orderList($('resolutions'), ALL.resolutions, r.resolutions, r.excluded_resolutions, () => {});
+  lists.qualities = orderList($('qualities'), ALL.qualities, r.qualities, [], () => {});
+  lists.hdr = orderList($('hdr'), ALL.hdr, r.hdr, [], () => {});
+  lists.codecs = orderList($('codecs'), ALL.codecs, r.codecs, [], () => {});
+  lists.anime = orderList($('anime-languages'), ALL.languages, cfg.anime.languages, ALL.languages.filter(x => !cfg.anime.languages.includes(x)), () => {});
+  $('rk-cam').checked = r.exclude_cam;
+  $('rk-cached').checked = r.cached_only;
+  $('rk-size').value = r.max_size_gb;
+  $('rk-max').value = r.max_results;
+  $('anime-groups').value = cfg.anime.groups.join('\n');
+  renderIndexers();
+  fetch(`/api/trackers?t=${T}`).then(r => r.json()).then(l => { TRACKERS = l; renderTrackers(); });
+}
+
+const enabledOf = s => s.items.filter(x => !s.excluded.has(x));
+
+function collect() {
+  cfg.debrid.service = $('debrid-service').value;
+  cfg.debrid.api_key = $('debrid-key').value.trim();
+  cfg.debrid.download_uncached = $('debrid-dl').checked;
+  for (const k of PUBLIC) cfg.public[k] = $('pub-' + k).checked;
+  cfg.metadata.tmdb_key = $('tmdb-key').value.trim();
+  cfg.metadata.language = $('tmdb-lang').value;
+  cfg.network.dns = $('net-dns').value;
+  const mode = $('net-flare-mode').value;
+  cfg.network.flaresolverr = mode === 'url' ? $('net-flare').value.trim() : mode;
+  cfg.network.timeout_secs = Number($('net-timeout').value) || 15;
+  const r = cfg.ranking;
+  r.order = enabledOf(lists.order);
+  r.languages = lists.languages.items.slice();
+  r.excluded_languages = [...lists.languages.excluded];
+  r.subtitles = enabledOf(lists.subtitles);
+  r.resolutions = lists.resolutions.items.slice();
+  r.excluded_resolutions = [...lists.resolutions.excluded];
+  r.qualities = enabledOf(lists.qualities);
+  r.hdr = enabledOf(lists.hdr);
+  r.codecs = enabledOf(lists.codecs);
+  r.exclude_cam = $('rk-cam').checked;
+  r.cached_only = $('rk-cached').checked;
+  r.max_size_gb = Number($('rk-size').value) || 0;
+  r.max_results = Number($('rk-max').value) || 60;
+  cfg.anime.languages = enabledOf(lists.anime);
+  cfg.anime.groups = $('anime-groups').value.split('\n').map(s => s.trim()).filter(Boolean);
+  return cfg;
+}
+
+function show(id, r) {
+  const el = $(id);
+  el.className = 'msg ' + (r.ok ? 'ok' : 'err');
+  el.textContent = (r.ok ? '✓ ' : '✕ ') + r.message;
+}
+
+async function test(what, index = 0) {
+  const id = what === 'indexer' ? `msg-ix-${index}` : `msg-${what}`;
+  $(id).className = 'msg'; $(id).textContent = 'Test en cours…';
+  try {
+    const r = await fetch(`/api/test?t=${T}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ what, index, config: collect() }) });
+    show(id, await r.json());
+  } catch (e) { show(id, { ok: false, message: String(e) }); }
+}
+
+async function save() {
+  const btn = document.querySelector('footer button');
+  btn.textContent = 'Enregistrement…';
+  try {
+    const r = await (await fetch(`/api/config?t=${T}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(collect()) })).json();
+    btn.textContent = r.ok ? '✓ Enregistré' : '✕ ' + r.message;
+  } catch (e) { btn.textContent = '✕ ' + e; }
+  setTimeout(() => btn.textContent = 'Enregistrer', 2500);
+}
+
+fetch(`/api/config?t=${T}`).then(r => r.json()).then(c => { cfg = c; fill(); }).catch(e => document.body.innerHTML = `<h1>Erreur</h1><p>${e}</p>`);
+</script>
+</body>
+</html>

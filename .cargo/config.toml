@@ -1,0 +1,3 @@
+[env]
+# Bazzite (image immuable) : pas de paquets -devel ; voir build-sys/
+PKG_CONFIG_PATH = { value = "build-sys/pkgconfig", relative = true }

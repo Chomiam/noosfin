@@ -44,16 +44,17 @@ impl Query {
         v
     }
 
-    /// Titres d'anime, plus une variante sans « Season 2 » / « 2nd Season » / « Part 2 ».
+    /// Titres d'anime, plus une variante sans « Season 2 » / « 2nd Season » / « Part 2 » et le titre
+    /// court avant les deux-points (« Frieren: Beyond Journey's End » → « Frieren »).
     pub fn anime_titles(&self) -> Vec<String> {
         let mut v = vec![];
         for t in self.titles() {
             let short = strip_season(&t);
-            if !v.contains(&t) {
-                v.push(t.clone());
-            }
-            if short != t && !v.contains(&short) {
-                v.push(short);
+            let head = short.split(':').next().unwrap_or(&short).trim().to_string();
+            for x in [t.clone(), short, head] {
+                if !x.is_empty() && !v.contains(&x) {
+                    v.push(x);
+                }
             }
         }
         v
@@ -81,13 +82,42 @@ fn test_query() -> Query {
 
 pub fn strip_season(t: &str) -> String {
     let lower = t.to_lowercase();
+    let mut out = t.to_string();
     for pat in [" season", " part", " saison", " cour"] {
         if let Some(p) = lower.find(pat) {
-            return t[..p].trim().trim_end_matches([':', '-']).trim().to_string();
+            out = t[..p].to_string();
+            break;
         }
     }
-    // « Titre 2nd Season » / « Titre 2 »
-    t.to_string()
+    // « Titre 2nd Season » → « Titre 2nd » → « Titre » ; « Titre S2 » → « Titre ».
+    let mut words: Vec<&str> = out.split_whitespace().collect();
+    while let Some(last) = words.last() {
+        let l = last.to_lowercase();
+        let ordinal = ["st", "nd", "rd", "th"].iter().any(|s| l.strip_suffix(s).is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())));
+        let season = l.strip_prefix('s').is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+        if (ordinal || season) && words.len() > 1 {
+            words.pop();
+        } else {
+            break;
+        }
+    }
+    words.join(" ").trim().trim_end_matches([':', '-']).trim().to_string()
+}
+
+#[cfg(test)]
+mod season_strip_tests {
+    use super::*;
+
+    #[test]
+    fn strip() {
+        assert_eq!(strip_season("Sousou no Frieren 2nd Season"), "Sousou no Frieren");
+        assert_eq!(strip_season("Kusuriya no Hitorigoto 3rd Season"), "Kusuriya no Hitorigoto");
+        assert_eq!(strip_season("Black Clover S2"), "Black Clover");
+        assert_eq!(strip_season("Shingeki no Kyojin: The Final Season Part 2"), "Shingeki no Kyojin: The Final");
+        assert_eq!(strip_season("Frieren"), "Frieren");
+        let q = Query { title: "Sousou no Frieren 2nd Season".into(), alt_titles: vec!["Frieren: Beyond Journey's End Season 2".into()], anime: true, ..Default::default() };
+        assert!(q.anime_titles().contains(&"Frieren".to_string()));
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -148,6 +178,7 @@ impl Engine {
                 return SearchResult { candidates: list.clone(), errors: vec![] };
             }
         }
+        log::info!("recherche : {q:?}");
         let mut set = tokio::task::JoinSet::new();
         let limit = Duration::from_secs(self.cfg.network.timeout_secs.max(5) + 25);
         macro_rules! job {
@@ -211,7 +242,10 @@ impl Engine {
         let mut errors = vec![];
         while let Some(r) = set.join_next().await {
             match r {
-                Ok((_, Ok(Ok(list)))) => all.extend(list),
+                Ok((name, Ok(Ok(list)))) => {
+                    log::info!("source {name} : {} résultat(s)", list.len());
+                    all.extend(list)
+                }
                 Ok((name, Ok(Err(e)))) => {
                     log::warn!("source {name} : {e:#}");
                     errors.push(format!("{name} : {e:#}"));
@@ -357,8 +391,9 @@ impl Engine {
     }
 
     async fn fetch_torrent(&self, url: &str) -> Result<Vec<u8>> {
-        let r = self.http.get(url).send().await?.error_for_status()?;
-        let b = r.bytes().await?.to_vec();
+        // Le lien .torrent d'un tracker privé contient la passkey : jamais dans les erreurs.
+        let r = self.http.get(url).send().await.and_then(|r| r.error_for_status()).map_err(|e| e.without_url())?;
+        let b = r.bytes().await.map_err(|e| e.without_url())?.to_vec();
         if b.first() != Some(&b'd') {
             anyhow::bail!("le tracker n'a pas renvoyé de fichier .torrent");
         }

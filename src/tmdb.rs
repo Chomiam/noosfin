@@ -39,7 +39,8 @@ impl Tmdb {
     async fn get(&self, path: &str, extra: &[(&str, &str)]) -> Result<Value> {
         let mut q: Vec<(&str, &str)> = vec![("api_key", &self.key), ("language", &self.lang)];
         q.extend_from_slice(extra);
-        let r = self.http.get(format!("{API}{path}")).query(&q).send().await?;
+        // Erreur sans l'URL : elle contient la clé API.
+        let r = self.http.get(format!("{API}{path}")).query(&q).send().await.map_err(|e| e.without_url())?;
         let status = r.status();
         if status.as_u16() == 401 {
             bail!("clé TMDB refusée");
@@ -47,7 +48,7 @@ impl Tmdb {
         if !status.is_success() {
             bail!("TMDB {path} : HTTP {status}");
         }
-        Ok(r.json().await?)
+        Ok(r.json().await.map_err(|e| e.without_url())?)
     }
 
     pub async fn check(&self) -> Result<String> {

@@ -108,7 +108,8 @@ pub fn is_challenge(status: u16, body: &str) -> bool {
 
 /// GET texte, avec passage par FlareSolverr si Cloudflare bloque.
 pub async fn get_text(http: &Client, net: &Network, url: &str) -> Result<String> {
-    let r = http.get(url).send().await;
+    // Les erreurs ne gardent pas l'URL : elle peut contenir une clé API (Torznab).
+    let r = http.get(url).send().await.map_err(|e| e.without_url());
     match r {
         Ok(r) => {
             let status = r.status().as_u16();
@@ -123,7 +124,7 @@ pub async fn get_text(http: &Client, net: &Network, url: &str) -> Result<String>
         }
         Err(e) if !net.flaresolverr.is_empty() && (e.is_connect() || e.is_timeout()) => {
             // Blocage réseau côté PC : FlareSolverr (avec son propre DNS) fait la requête à notre place.
-            log::debug!("{url} : {e} → FlareSolverr");
+            log::debug!("{} : {e} → FlareSolverr", url.split('?').next().unwrap_or_default());
             flaresolverr(http, &net.flaresolverr, url).await
         }
         Err(e) => Err(e.into()),

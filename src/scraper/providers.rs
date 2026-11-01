@@ -197,6 +197,22 @@ pub fn title_ok(release: &str, titles: &[String]) -> bool {
     })
 }
 
+/// Animes : les trackers FR abrègent souvent le titre romaji à son dernier mot
+/// (« Sousou no Frieren » → « Frieren.S02E05 »). On accepte une fin de titre placée en tête.
+pub fn anime_title_ok(release: &str, titles: &[String]) -> bool {
+    if title_ok(release, titles) {
+        return true;
+    }
+    let r = title_words(release);
+    titles.iter().any(|t| {
+        let w = title_words(&super::strip_season(t));
+        (1..w.len()).any(|i| {
+            let tail = &w[i..];
+            tail.iter().map(String::len).sum::<usize>() >= 5 && r.len() > tail.len() && r[..tail.len()] == tail[..]
+        })
+    })
+}
+
 #[cfg(test)]
 mod title_tests {
     use super::title_ok;
@@ -212,6 +228,8 @@ mod title_tests {
         assert!(t("Interstellar.2014.MULTI.VFF.2160p", "Interstellar"));
         assert!(t("The Dark Knight 2008 1080p", "The Dark Knight"));
         assert!(!t("Dune 2 2024 1080p", "Dune"));
+        let a = |r: &str, q: &str| super::anime_title_ok(r, &[q.to_string()]);
+        assert!(a("Frieren.S02E08.VOSTFR.1080p", "Sousou no Frieren 2nd Season"));
     }
 }
 
@@ -274,11 +292,23 @@ pub async fn torznab(http: &Client, net: &Network, ix: &Indexer, throttle: &Thro
     let mut out = vec![];
     if !q.anime {
         if let Some(imdb) = &q.imdb {
-            let params: Vec<(&str, String)> = match (q.season, q.episode) {
-                (Some(s), Some(e)) => vec![("t", "tvsearch".into()), ("imdbid", imdb.clone()), ("season", s.to_string()), ("ep", e.to_string()), ("limit", "100".into())],
-                _ => vec![("t", "movie".into()), ("imdbid", imdb.clone()), ("limit", "100".into())],
-            };
-            out = torznab_request(http, net, ix, throttle, &params).await?;
+            match (q.season, q.episode) {
+                (Some(s), Some(e)) => {
+                    // Épisode exact, puis la saison entière : les packs de saison n'apparaissent
+                    // qu'avec la seconde requête (et certains trackers ne répondent qu'à elle).
+                    let base = |extra: Vec<(&'static str, String)>| {
+                        let mut p = vec![("t", "tvsearch".to_string()), ("imdbid", imdb.clone()), ("season", s.to_string()), ("limit", "100".into())];
+                        p.extend(extra);
+                        p
+                    };
+                    out = torznab_request(http, net, ix, throttle, &base(vec![("ep", e.to_string())])).await.unwrap_or_default();
+                    let season = torznab_request(http, net, ix, throttle, &base(vec![])).await?;
+                    out.extend(season.into_iter().filter(|c| c.info.episodes.is_empty() || c.info.episodes.contains(&e)));
+                }
+                _ => {
+                    out = torznab_request(http, net, ix, throttle, &[("t", "movie".into()), ("imdbid", imdb.clone()), ("limit", "100".into())]).await?;
+                }
+            }
         }
     }
     if out.is_empty() {
@@ -288,8 +318,15 @@ pub async fn torznab(http: &Client, net: &Network, ix: &Indexer, throttle: &Thro
         let texts: Vec<String> = if q.anime { q.anime_titles().into_iter().map(|t| super::strip_season(&t)).collect() } else { vec![q.text_query()] };
         let mut seen = std::collections::HashSet::new();
         for text in texts.into_iter().filter(|t| seen.insert(t.to_lowercase())).take(2) {
-            let mut list = torznab_request(http, net, ix, throttle, &[("t", "search".into()), ("q", text), ("limit", "100".into())]).await?;
-            list.retain(|c| title_ok(&c.title, &q.titles()));
+            let mut list = torznab_request(http, net, ix, throttle, &[("t", "search".into()), ("q", text.clone()), ("limit", "100".into())]).await?;
+            let before = list.len();
+            log::trace!("{} « {text} » : {:?}", ix.name, list.iter().map(|c| &c.title).take(8).collect::<Vec<_>>());
+            if q.anime {
+                list.retain(|c| anime_title_ok(&c.title, &q.anime_titles()));
+            } else {
+                list.retain(|c| title_ok(&c.title, &q.titles()));
+            }
+            log::debug!("{} « {text} » : {before} → {} ({:?})", ix.name, list.len(), list.iter().map(|c| &c.title).take(3).collect::<Vec<_>>());
             out.extend(list);
             if out.len() >= 5 {
                 break;

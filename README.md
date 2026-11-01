@@ -166,7 +166,8 @@ git clone https://github.com/Chomiam/noosfin && cd noosfin
 ```
 
 Bazzite n'a pas de paquets `-devel` : `build-sys/` fournit un stub pkg-config pour fontconfig.
-Les releases sont construites par GitHub Actions dans un conteneur Fedora à chaque tag `v*`.
+Publier une version : monter la version dans `Cargo.toml`, `./packaging/package.sh`, puis
+`gh release create vX.Y.Z dist/noosfin-x86_64.tar.gz` — l'application la proposera d'elle-même.
 
 ## 🙏 Remerciements
 

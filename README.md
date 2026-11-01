@@ -111,6 +111,10 @@ L'installateur vérifie votre système, propose les options puis installe tout :
 
 ## 🎮 Commandes
 
+Manettes Xbox (et compatibles : 8BitDo, Steam Deck), PlayStation et Switch : les boutons sont reconnus selon leur
+position, et les aides à l'écran affichent les symboles de la manette utilisée (✕ ○ □ △ sur PlayStation ;
+sur Switch, A valide et B annule comme sur la console).
+
 | Manette | Clavier | Action |
 |---|---|---|
 | Ⓐ | Entrée | Ouvrir / lire |

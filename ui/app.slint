@@ -938,6 +938,7 @@ component IptvForm inherits Rectangle {
 }
 
 component IptvBrowse inherits Rectangle {
+    in property <string> glyph-x: "Ⓧ";
     in property <[string]> tabs;
     in property <int> tab;
     in property <string> profile-name;
@@ -1072,7 +1073,7 @@ component IptvBrowse inherits Rectangle {
         y: root.top + 100px;
         width: root.gw;
         Text { text: root.status; font-size: 30px; color: Theme.subtext; horizontal-alignment: center; }
-        Text { text: "Le premier chargement d'un gros catalogue peut prendre une à deux minutes ;\nil est ensuite gardé 24 h en cache (Ⓧ sur le profil pour le recharger)."; font-size: 18px; color: Theme.overlay; horizontal-alignment: center; }
+        Text { text: "Le premier chargement d'un gros catalogue peut prendre une à deux minutes ;\nil est ensuite gardé 24 h en cache (" + root.glyph-x + " sur le profil pour le recharger)."; font-size: 18px; color: Theme.overlay; horizontal-alignment: center; }
     }
 }
 
@@ -1093,6 +1094,9 @@ export component AppWindow inherits Window {
     in property <bool> playing;
     in property <string> playing-title;
     in property <string> hints;
+    in property <string> glyph-a: "Ⓐ";
+    in property <string> glyph-b: "Ⓑ";
+    in property <string> glyph-x: "Ⓧ";
 
     // Tableau de bord
     in property <int> dash-area;
@@ -1352,6 +1356,7 @@ export component AppWindow inherits Window {
         }
 
         if root.screen == 8 : IptvBrowse {
+            glyph-x: root.glyph-x;
             tabs: root.iptv-tabs;
             tab: root.iptv-tab;
             profile-name: root.iptv-profile-name;
@@ -1424,8 +1429,8 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 12px;
                     alignment: start;
-                    Button { text: "Ⓐ Lire maintenant"; focused: true; clicked => { root.click(9, 0, 0); } }
-                    Text { text: "Ⓑ Annuler"; font-size: 18px; color: Theme.subtext; vertical-alignment: center; }
+                    Button { text: root.glyph-a + " Lire maintenant"; focused: true; clicked => { root.click(9, 0, 0); } }
+                    Text { text: root.glyph-b + " Annuler"; font-size: 18px; color: Theme.subtext; vertical-alignment: center; }
                 }
             }
         }

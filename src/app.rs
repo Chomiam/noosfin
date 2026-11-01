@@ -523,6 +523,8 @@ pub struct Controller {
     hero_url: Option<String>,
     /// Animes dont le résumé français a déjà été demandé.
     fr_requested: HashSet<i64>,
+    /// Dernière manette utilisée (symboles des boutons affichés).
+    pad_layout: gamepad::Layout,
     /// Configuration des sources dans l'application.
     sc_cfg: scraper::config::Sources,
     sc_focus: i32,
@@ -620,6 +622,12 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
         update_busy: false,
         disc: None,
         disc_playing: false,
+        // Pour les tests : NOOSFIN_PAD=playstation | nintendo.
+        pad_layout: match std::env::var("NOOSFIN_PAD").as_deref() {
+            Ok("playstation") => gamepad::Layout::PlayStation,
+            Ok("nintendo") => gamepad::Layout::Nintendo,
+            _ => gamepad::Layout::default(),
+        },
         sc_cfg: scraper::config::Sources::default(),
         sc_focus: 1,
         sc_msg: String::new(),
@@ -676,7 +684,15 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
 
     // Pendant la lecture, les boutons sont relayés à l'overlay mpv (voir on_pad).
     let _ = playing;
-    gamepad::spawn(&rt, Arc::new(AtomicBool::new(false)), |pad| post(move |c| c.on_pad(pad)));
+    gamepad::spawn(&rt, Arc::new(AtomicBool::new(false)), |pad, layout| {
+        post(move |c| {
+            if c.pad_layout != layout {
+                c.pad_layout = layout;
+                c.sync();
+            }
+            c.on_pad(pad)
+        })
+    });
 
     // Horloge
     let clock = slint::Timer::default();
@@ -707,6 +723,7 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
     with_ctrl(|c| {
         c.refresh_hdr();
         c.check_update(true);
+        c.repair_metadata();
         c.disc = crate::disc::detect();
         c.load_manifest();
         c.load_dashboard();
@@ -879,6 +896,14 @@ fn progress_card(id: i64, p: &AnimeProgress) -> (MediaRef, CardInfo) {
     )
 }
 
+/// Résumé sans la ligne de genres ajoutée en tête des fiches d'anime.
+fn plain_overview(o: &str) -> String {
+    match o.split_once("\n\n") {
+        Some((first, rest)) if first.contains(" · ") && !first.contains('.') => rest.trim().to_string(),
+        _ => o.trim().to_string(),
+    }
+}
+
 /// Carte d'un favori local.
 fn fav_card(f: &Favorite) -> Option<(MediaRef, CardInfo)> {
     let r = match &f.open {
@@ -901,7 +926,7 @@ fn fav_card(f: &Favorite) -> Option<(MediaRef, CardInfo)> {
             subtitle: f.subtitle.clone(),
             image: f.image.clone(),
             backdrop: f.backdrop.clone(),
-            overview: String::new(),
+            overview: f.overview.clone(),
             meta: f.subtitle.clone(),
             progress: -1.0,
             badge: String::new(),
@@ -928,7 +953,7 @@ fn hist_card(h: &HistoryEntry) -> (MediaRef, CardInfo) {
             subtitle: [h.subtitle.as_str(), remaining.as_str()].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join("  ·  "),
             image: h.backdrop.clone().or(h.image.clone()),
             backdrop: h.backdrop.clone().or(h.image.clone()),
-            overview: h.subtitle.clone(),
+            overview: if h.overview.is_empty() { h.subtitle.clone() } else { format!("{}\n{}", h.subtitle, h.overview) },
             meta: format!("Regardé à {when}  ·  {remaining}"),
             progress: if h.duration > 0.0 && !h.finished { (h.position / h.duration) as f32 } else { -1.0 },
             badge: String::new(),
@@ -1126,8 +1151,31 @@ impl Controller {
         self.rt.spawn(f);
     }
 
+    /// Symboles des boutons selon la dernière manette utilisée (textes écrits avec ceux de la Xbox).
+    fn glyphs(&self, s: &str) -> String {
+        use gamepad::Layout;
+        let mapped: String = s
+            .chars()
+            .map(|c| match (self.pad_layout, c) {
+                (Layout::PlayStation, 'Ⓐ') => '✕',
+                (Layout::PlayStation, 'Ⓑ') => '○',
+                (Layout::PlayStation, 'Ⓧ') => '□',
+                (Layout::PlayStation, 'Ⓨ') => '△',
+                // Switch : le bouton de gauche s'appelle Y, celui du haut X.
+                (Layout::Nintendo, 'Ⓧ') => 'Ⓨ',
+                (Layout::Nintendo, 'Ⓨ') => 'Ⓧ',
+                (_, c) => c,
+            })
+            .collect();
+        match self.pad_layout {
+            Layout::Xbox => mapped,
+            Layout::PlayStation => mapped.replace("LB / RB", "L1 / R1"),
+            Layout::Nintendo => mapped.replace("LB / RB", "L / R"),
+        }
+    }
+
     fn toast(&mut self, msg: impl Into<String>) {
-        let msg = msg.into();
+        let msg = self.glyphs(&msg.into());
         log::info!("{msg}");
         self.toast_gen += 1;
         let stamp = self.toast_gen;
@@ -1192,8 +1240,7 @@ impl Controller {
             ui.set_d_episode(d.ep);
             ui.set_d_season(d.season);
         }
-        ui.set_hints(
-            match self.screen {
+        let hints = match self.screen {
                 SCR_MEDIA if self.tab == TAB_HISTORY => "Ⓐ Ouvrir    Ⓨ Retirer    Ⓑ Accueil    LB / RB Onglets",
                 SCR_MEDIA => "Ⓐ Ouvrir    Ⓑ Accueil    LB / RB Onglets",
                 SCR_DETAIL => "Ⓐ Lire    Ⓨ Sources    Ⓧ Favori    Ⓑ Retour",
@@ -1204,9 +1251,12 @@ impl Controller {
                 SCR_IPTV => "Ⓐ Lire / ouvrir    Ⓧ Favori    LB / RB Onglets    Ⓑ Profils",
                 SCR_SRC_CFG => "Ⓐ / ← → Modifier    Ⓨ Tester    Ⓧ Retirer un tracker    LB / RB Défiler    Ⓑ Retour",
                 _ => "",
-            }
-            .into(),
-        );
+        };
+        ui.set_hints(self.glyphs(hints).into());
+        let g = |c: &str| SharedString::from(self.glyphs(c));
+        ui.set_glyph_a(g("Ⓐ"));
+        ui.set_glyph_b(g("Ⓑ"));
+        ui.set_glyph_x(g("Ⓧ"));
         ui.set_next_visible(self.next_prompt.is_some());
         match self.dialog {
             Some(Dialog::InstallVacuumTube { focus, busy }) => {
@@ -1704,7 +1754,8 @@ impl Controller {
             .take(20)
             .map(hist_card)
             .collect();
-        let favs: Vec<(MediaRef, CardInfo)> = self.state.favorites.iter().filter_map(fav_card).collect();
+        let favs: Vec<(MediaRef, CardInfo)> =
+            self.state.favorites.iter().filter(|f| jf_ok || !matches!(f.open, OpenRef::Jf { .. })).filter_map(fav_card).collect();
         let anime_favs: Vec<(MediaRef, CardInfo)> = self.state.favorites.iter().filter(|f| matches!(f.open, OpenRef::Anime { .. })).filter_map(fav_card).collect();
 
         let jf_list = |fut: std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<Item>>> + Send>>, svc: Arc<Services>, wide: bool| -> Loader {
@@ -1849,7 +1900,7 @@ impl Controller {
                 // Regroupement par jour, du plus récent au plus ancien.
                 let mut days: Vec<(String, Vec<(MediaRef, CardInfo)>)> = vec![];
                 let today = chrono::Local::now().date_naive();
-                for h in &self.state.history {
+                for h in self.state.history.iter().filter(|h| jf_ok || !matches!(h.open, OpenRef::Jf { .. })) {
                     let d = chrono::DateTime::from_timestamp(h.watched_at, 0)
                         .map(|d| d.with_timezone(&chrono::Local))
                         .unwrap_or_else(chrono::Local::now);
@@ -2293,6 +2344,9 @@ impl Controller {
     /// Référence de la fiche courante, pour les favoris (hors IPTV, qui a les siens).
     fn detail_open_ref(&self) -> Option<OpenRef> {
         let d = self.detail.as_ref()?;
+        if let Some(a) = &d.data.anime {
+            return Some(OpenRef::Anime { id: a.anime.id });
+        }
         Some(match &d.root {
             MediaRef::Jf(it) => OpenRef::Jf { id: it.series_id.clone().unwrap_or_else(|| it.id.clone()) },
             MediaRef::JfId(id) => OpenRef::Jf { id: id.clone() },
@@ -2312,6 +2366,7 @@ impl Controller {
             subtitle: d.data.meta.split("  ·  ").take(2).collect::<Vec<_>>().join(" · "),
             image: d.data.poster.clone(),
             backdrop: d.data.backdrop.clone(),
+            overview: plain_overview(&d.data.overview),
             added: chrono::Local::now().timestamp(),
         };
         let on = self.state.toggle_favorite(fav);
@@ -2958,6 +3013,8 @@ impl Controller {
         };
         let d = self.detail.as_ref()?;
         let open = match &d.root {
+            // Anime : la saison affichée (onglets de saisons), pas la fiche ouverte au départ.
+            _ if d.data.anime.is_some() => OpenRef::Anime { id: d.data.anime.as_ref().unwrap().anime.id },
             MediaRef::Jf(it) => OpenRef::Jf { id: it.series_id.clone().unwrap_or_else(|| it.id.clone()) },
             MediaRef::JfId(id) => OpenRef::Jf { id: id.clone() },
             MediaRef::Meta(m) => OpenRef::Meta { kind: m.kind.clone(), id: m.id.clone() },
@@ -2973,6 +3030,7 @@ impl Controller {
             image: d.data.poster.clone(),
             backdrop: d.data.backdrop.clone(),
             open,
+            overview: plain_overview(&d.data.overview),
             position: 0.0,
             duration: 0.0,
             finished: false,
@@ -3308,6 +3366,72 @@ impl Controller {
             self.toast(format!("Sauvegarde impossible : {e:#}"));
         }
         self.svc = Services::new(cfg, self.svc.http.clone());
+    }
+
+    // ─────────────── Réparation des favoris / de l'historique ───────────────
+
+    /// Complète en arrière-plan les entrées enregistrées sans résumé ou sans image.
+    fn repair_metadata(&mut self) {
+        let mut todo: Vec<OpenRef> = vec![];
+        let need = |o: &str, img: &Option<String>| o.is_empty() || img.is_none();
+        for (open, o, img) in self
+            .state
+            .favorites
+            .iter()
+            .map(|f| (&f.open, &f.overview, &f.image))
+            .chain(self.state.history.iter().map(|h| (&h.open, &h.overview, &h.image)))
+        {
+            if matches!(open, OpenRef::Anime { .. } | OpenRef::Meta { .. }) && need(o, img) && !todo.contains(open) {
+                todo.push(open.clone());
+            }
+        }
+        if todo.is_empty() {
+            return;
+        }
+        let svc = self.svc.clone();
+        self.spawn(async move {
+            let mut fixed: Vec<(OpenRef, String, Option<String>, Option<String>)> = vec![];
+            for open in todo.into_iter().take(40) {
+                match &open {
+                    OpenRef::Anime { id } => {
+                        if let Ok(a) = svc.ani.by_id(*id).await {
+                            let o = fr_overview(*id).unwrap_or_else(|| a.clean_description());
+                            fixed.push((open.clone(), o, a.cover_url(), a.banner.clone().or_else(|| a.cover_url())));
+                        }
+                    }
+                    OpenRef::Meta { kind, id } => {
+                        if let Ok(m) = svc.aio.meta(kind, id).await {
+                            fixed.push((open.clone(), m.description.clone().unwrap_or_default(), m.poster.clone(), m.background.clone().or(m.poster.clone())));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            post(move |c| {
+                for (open, o, img, bg) in fixed {
+                    for f in c.state.favorites.iter_mut().filter(|f| f.open == open) {
+                        if f.overview.is_empty() {
+                            f.overview = o.clone();
+                        }
+                        f.image = f.image.take().or(img.clone());
+                        f.backdrop = f.backdrop.take().or(bg.clone());
+                    }
+                    for h in c.state.history.iter_mut().filter(|h| h.open == open) {
+                        if h.overview.is_empty() {
+                            h.overview = o.clone();
+                        }
+                        h.image = h.image.take().or(img.clone());
+                        h.backdrop = h.backdrop.take().or(bg.clone());
+                    }
+                }
+                c.state.save();
+                if c.screen == SCR_MEDIA {
+                    c.reload_tab_keep_focus();
+                    c.update_hero();
+                }
+                c.sync();
+            });
+        });
     }
 
     // ─────────────── Disque optique ───────────────

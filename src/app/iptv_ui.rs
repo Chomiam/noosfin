@@ -917,6 +917,7 @@ impl Controller {
                 image: e.logo.clone(),
                 backdrop: e.logo.clone(),
                 open: OpenRef::Iptv { profile: p.id.clone(), kind: "live".into(), id: e.id.clone() },
+                overview: e.plot.clone().unwrap_or_default(),
                 position: 0.0,
                 duration: 0.0,
                 finished: false,
@@ -1038,7 +1039,7 @@ impl Controller {
                 let mb = s.progress.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e6;
                 if mb > 0.5 { format!("Téléchargement du catalogue… {mb:.0} Mo") } else { "Chargement du catalogue…".to_string() }
             } else if n == 0 {
-                if s.tab == FAV_TAB { "Aucun favori : Ⓧ sur une chaîne, un film ou une série".into() } else { "Aucun résultat".into() }
+                if s.tab == FAV_TAB { self.glyphs("Aucun favori : Ⓧ sur une chaîne, un film ou une série").into() } else { "Aucun résultat".into() }
             } else {
                 format!("{} / {n}", s.grid + 1)
             }

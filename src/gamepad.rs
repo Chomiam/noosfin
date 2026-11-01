@@ -1,6 +1,10 @@
-//! Manettes (evdev) → touches clavier envoyées à l'interface.
-//! A = Entrée, B = Échap, croix / stick gauche = flèches, LB/RB = onglets, Start = menu,
-//! X / Y = actions secondaires, Select = informations (pendant la lecture).
+//! Manettes (evdev) → actions de l'interface.
+//! Valider / Retour, croix ou stick gauche = flèches, LB/RB = onglets, Start = menu,
+//! bouton gauche / haut = actions secondaires (`Pad::X` / `Pad::Y`), Select = informations.
+//!
+//! Les pilotes ne codent pas les boutons de la même façon : `xpad` (Xbox, 8BitDo, Steam) envoie
+//! BTN_X (= BTN_NORTH) pour le bouton X, situé à gauche ; `hid-playstation` et `hid-nintendo`
+//! envoient des codes positionnels. On ramène tout à la position du bouton.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -27,13 +31,33 @@ pub enum Pad {
     Y,
 }
 
+/// Famille de manette : correspondance des boutons et symboles affichés.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Layout {
+    #[default]
+    Xbox,
+    PlayStation,
+    Nintendo,
+}
+
+impl Layout {
+    fn detect(dev: &Device) -> Layout {
+        match dev.input_id().vendor() {
+            0x054c => Layout::PlayStation,
+            // Nintendo, y compris les 8BitDo en mode Switch (identifiant Nintendo).
+            0x057e => Layout::Nintendo,
+            _ => Layout::Xbox,
+        }
+    }
+}
+
 const REPEAT_DELAY: Duration = Duration::from_millis(380);
 const REPEAT_RATE: Duration = Duration::from_millis(110);
 
 /// Démarre la surveillance des manettes. `paused` coupe l'envoi (pendant la lecture mpv).
-pub fn spawn(rt: &tokio::runtime::Handle, paused: Arc<AtomicBool>, sink: impl Fn(Pad) + Send + Sync + 'static) {
+pub fn spawn(rt: &tokio::runtime::Handle, paused: Arc<AtomicBool>, sink: impl Fn(Pad, Layout) + Send + Sync + 'static) {
     let sink = Arc::new(sink);
-    let (tx, mut rx) = mpsc::unbounded_channel::<(Pad, bool)>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<(Pad, bool, Layout)>();
 
     // Découverte (et branchement à chaud) des manettes.
     rt.spawn(async move {
@@ -43,7 +67,12 @@ pub fn spawn(rt: &tokio::runtime::Handle, paused: Arc<AtomicBool>, sink: impl Fn
                 if known.contains(&path) || !is_gamepad(&dev) {
                     continue;
                 }
-                log::info!("manette : {} ({})", dev.name().unwrap_or("?"), path.display());
+                // Manette virtuelle de Steam (Steam Input) : doublerait chaque appui.
+                if dev.input_id().vendor() == 0x28de && dev.input_id().product() == 0x11ff {
+                    known.insert(path.clone());
+                    continue;
+                }
+                log::info!("manette : {} ({}, {:?})", dev.name().unwrap_or("?"), path.display(), Layout::detect(&dev));
                 known.insert(path.clone());
                 let tx = tx.clone();
                 tokio::spawn(async move {
@@ -59,26 +88,26 @@ pub fn spawn(rt: &tokio::runtime::Handle, paused: Arc<AtomicBool>, sink: impl Fn
 
     // Répétition automatique tant qu'une direction est maintenue.
     rt.spawn(async move {
-        let mut held: Option<Pad> = None;
+        let mut held: Option<(Pad, Layout)> = None;
         let mut next = tokio::time::Instant::now();
         loop {
             let wait = if held.is_some() { next } else { tokio::time::Instant::now() + Duration::from_secs(3600) };
             tokio::select! {
                 ev = rx.recv() => {
-                    let Some((pad, down)) = ev else { break };
+                    let Some((pad, down, layout)) = ev else { break };
                     if down {
-                        if !paused.load(Ordering::Relaxed) { sink(pad); }
+                        if !paused.load(Ordering::Relaxed) { sink(pad, layout); }
                         if matches!(pad, Pad::Up | Pad::Down | Pad::Left | Pad::Right) {
-                            held = Some(pad);
+                            held = Some((pad, layout));
                             next = tokio::time::Instant::now() + REPEAT_DELAY;
                         }
-                    } else if held == Some(pad) {
+                    } else if held.is_some_and(|(p, _)| p == pad) {
                         held = None;
                     }
                 }
                 _ = tokio::time::sleep_until(wait) => {
-                    if let Some(p) = held {
-                        if !paused.load(Ordering::Relaxed) { sink(p); }
+                    if let Some((p, layout)) = held {
+                        if !paused.load(Ordering::Relaxed) { sink(p, layout); }
                         next = tokio::time::Instant::now() + REPEAT_RATE;
                     }
                 }
@@ -91,7 +120,8 @@ fn is_gamepad(dev: &Device) -> bool {
     dev.supported_keys().is_some_and(|k| k.contains(KeyCode::BTN_SOUTH) && k.contains(KeyCode::BTN_EAST))
 }
 
-async fn read_device(dev: Device, tx: mpsc::UnboundedSender<(Pad, bool)>) -> std::io::Result<()> {
+async fn read_device(dev: Device, tx: mpsc::UnboundedSender<(Pad, bool, Layout)>) -> std::io::Result<()> {
+    let layout = Layout::detect(&dev);
     // Centre/plage des sticks pour la zone morte.
     let absinfo: Vec<_> = dev.get_absinfo()?.collect();
     let range = |axis: AbsoluteAxisCode| {
@@ -107,7 +137,7 @@ async fn read_device(dev: Device, tx: mpsc::UnboundedSender<(Pad, bool)>) -> std
     let mut hat_y: Option<Pad> = None;
 
     let send = |p: Pad, d: bool| {
-        let _ = tx.send((p, d));
+        let _ = tx.send((p, d, layout));
     };
     // Transition d'un axe à trois états (négatif / neutre / positif).
     let axis = |state: &mut Option<Pad>, new: Option<Pad>| {
@@ -138,19 +168,25 @@ async fn read_device(dev: Device, tx: mpsc::UnboundedSender<(Pad, bool)>) -> std
         match ev.destructure() {
             EventSummary::Key(_, code, value) if value != 2 => {
                 let down = value == 1;
-                let pad = match code {
-                    KeyCode::BTN_SOUTH => Pad::Accept,
-                    KeyCode::BTN_EAST => Pad::Back,
-                    KeyCode::BTN_NORTH => Pad::Y,
-                    KeyCode::BTN_WEST => Pad::X,
-                    KeyCode::BTN_TL | KeyCode::BTN_TL2 => Pad::PrevTab,
-                    KeyCode::BTN_TR | KeyCode::BTN_TR2 => Pad::NextTab,
-                    KeyCode::BTN_START | KeyCode::BTN_MODE => Pad::Menu,
-                    KeyCode::BTN_SELECT => Pad::Select,
-                    KeyCode::BTN_DPAD_UP => Pad::Up,
-                    KeyCode::BTN_DPAD_DOWN => Pad::Down,
-                    KeyCode::BTN_DPAD_LEFT => Pad::Left,
-                    KeyCode::BTN_DPAD_RIGHT => Pad::Right,
+                let pad = match (layout, code) {
+                    // Switch : A (à droite) valide, B (en bas) annule, comme sur la console.
+                    (Layout::Nintendo, KeyCode::BTN_EAST) => Pad::Accept,
+                    (Layout::Nintendo, KeyCode::BTN_SOUTH) => Pad::Back,
+                    (_, KeyCode::BTN_SOUTH) => Pad::Accept,
+                    (_, KeyCode::BTN_EAST) => Pad::Back,
+                    // xpad : BTN_NORTH (= BTN_X) est le bouton X, à gauche.
+                    (Layout::Xbox, KeyCode::BTN_NORTH) => Pad::X,
+                    (Layout::Xbox, KeyCode::BTN_WEST) => Pad::Y,
+                    (_, KeyCode::BTN_NORTH) => Pad::Y,
+                    (_, KeyCode::BTN_WEST) => Pad::X,
+                    (_, KeyCode::BTN_TL | KeyCode::BTN_TL2) => Pad::PrevTab,
+                    (_, KeyCode::BTN_TR | KeyCode::BTN_TR2) => Pad::NextTab,
+                    (_, KeyCode::BTN_START | KeyCode::BTN_MODE) => Pad::Menu,
+                    (_, KeyCode::BTN_SELECT) => Pad::Select,
+                    (_, KeyCode::BTN_DPAD_UP) => Pad::Up,
+                    (_, KeyCode::BTN_DPAD_DOWN) => Pad::Down,
+                    (_, KeyCode::BTN_DPAD_LEFT) => Pad::Left,
+                    (_, KeyCode::BTN_DPAD_RIGHT) => Pad::Right,
                     _ => continue,
                 };
                 send(pad, down);

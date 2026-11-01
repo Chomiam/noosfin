@@ -38,6 +38,9 @@ pub struct HistoryEntry {
     pub image: Option<String>,
     pub backdrop: Option<String>,
     pub open: OpenRef,
+    /// Résumé affiché dans le bandeau (anciennes entrées : complété au lancement).
+    #[serde(default)]
+    pub overview: String,
     pub position: f64,
     pub duration: f64,
     pub finished: bool,
@@ -52,6 +55,8 @@ pub struct Favorite {
     pub subtitle: String,
     pub image: Option<String>,
     pub backdrop: Option<String>,
+    #[serde(default)]
+    pub overview: String,
     pub added: i64,
 }
 

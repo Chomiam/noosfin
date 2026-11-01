@@ -234,7 +234,15 @@ impl Controller {
     }
 
     pub(super) fn sc_sync(&mut self) {
-        let rows: Vec<ScRow> = self.sc_rows().iter().map(|r| self.sc_row_data(r)).collect();
+        let rows: Vec<ScRow> = self
+            .sc_rows()
+            .iter()
+            .map(|r| {
+                let mut d = self.sc_row_data(r);
+                d.value = self.glyphs(&d.value).into();
+                d
+            })
+            .collect();
         let ui = self.ui();
         self.sc_model.set_vec(rows);
         ui.set_sc_focus(self.sc_focus);

@@ -908,7 +908,7 @@ impl Controller {
                 finished: false,
                 watched_at: 0,
             };
-            let req = PlayRequest { url: e.url.clone().unwrap_or_default(), title: e.name.clone(), start_secs: 0.0, http_headers: vec![], report: None, live: true };
+            let req = PlayRequest { url: e.url.clone().unwrap_or_default(), title: e.name.clone(), start_secs: 0.0, http_headers: vec![], report: None, live: true, mpv_args: vec![] };
             self.played_ep = None;
             self.launch(t, req, None, Some(hist));
             return;

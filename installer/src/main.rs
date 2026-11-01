@@ -149,6 +149,17 @@ fn install_user_files(root: &Path) -> Result<()> {
     put(&root.join("session/noosfin-mpv"), &bin.join("noosfin-mpv"), 0o755)?;
     put(&root.join("share/noosfin-osc.lua"), &h.join(".local/share/noosfin/mpv/noosfin-osc.lua"), 0o644)?;
     put(&root.join("share/noos-logo.svg"), &h.join(".local/share/icons/hicolor/scalable/apps/noosfin.svg"), 0o644)?;
+    // Filtres d'image du lecteur (menu Start dans mpv).
+    for e in std::fs::read_dir(root.join("share/shaders")).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x == "glsl") {
+            put(&p, &h.join(".local/share/noosfin/shaders").join(e.file_name()), 0o644)?;
+        }
+    }
+    // mpv (Flatpak) doit lire l'overlay et les shaders, et mémoriser le filtre choisi.
+    if has("flatpak") {
+        let _ = Command::new("flatpak").args(["override", "--user", "--filesystem=xdg-data/noosfin", "io.mpv.Mpv"]).status();
+    }
     Ok(())
 }
 
@@ -242,12 +253,14 @@ fn uninstall_mode() -> Result<()> {
         ".local/bin/noosfin-session",
         ".local/bin/noosfin-mpv",
         ".local/share/noosfin/mpv/noosfin-osc.lua",
+        ".local/share/noosfin/mpv/image-preset",
         ".local/share/applications/noosfin.desktop",
         ".local/share/icons/hicolor/scalable/apps/noosfin.svg",
         ".local/bin/noosfin-installer",
     ] {
         let _ = std::fs::remove_file(h.join(f));
     }
+    let _ = std::fs::remove_dir_all(h.join(".local/share/noosfin/shaders"));
     let _ = Command::new("podman").args(["rm", "-f", "noosfin-flaresolverr"]).stdout(Stdio::null()).stderr(Stdio::null()).status();
     println!("Noosfin a été retiré. Bazzite reprendra son démarrage habituel.");
     Ok(())

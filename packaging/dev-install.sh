@@ -23,6 +23,8 @@ install -Dm755 target/release/noosfin "$HOME/.local/bin/noosfin"
 install -Dm755 session/noosfin-session "$HOME/.local/bin/noosfin-session"
 install -Dm755 session/noosfin-mpv "$HOME/.local/bin/noosfin-mpv"
 install -Dm644 assets/mpv/noosfin-osc.lua "$HOME/.local/share/noosfin/mpv/noosfin-osc.lua"
+mkdir -p "$HOME/.local/share/noosfin/shaders" && install -m644 assets/shaders/*.glsl "$HOME/.local/share/noosfin/shaders/"
+flatpak override --user --filesystem=xdg-data/noosfin io.mpv.Mpv 2>/dev/null || true
 install -Dm644 assets/noos-logo.svg "$HOME/.local/share/icons/hicolor/scalable/apps/noosfin.svg"
 install -Dm644 /dev/stdin "$HOME/.local/share/applications/noosfin.desktop" <<DESK
 [Desktop Entry]

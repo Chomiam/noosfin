@@ -521,6 +521,10 @@ pub struct Controller {
     hero_url: Option<String>,
     /// Animes dont le résumé français a déjà été demandé.
     fr_requested: HashSet<i64>,
+    /// Lecteur optique (interne ou USB) et disque inséré.
+    disc: Option<crate::disc::Disc>,
+    /// Lecture de disque en cours (pour expliquer un échec AACS).
+    disc_playing: bool,
     /// Release GitHub plus récente que la version installée.
     update: Option<crate::update::Release>,
     update_busy: bool,
@@ -607,6 +611,8 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
         fr_requested: HashSet::new(),
         update: None,
         update_busy: false,
+        disc: None,
+        disc_playing: false,
         catalogs: vec![],
         aio_name: String::new(),
         detail: None,
@@ -674,9 +680,22 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
     clock.start(slint::TimerMode::Repeated, Duration::from_secs(1), tick);
     std::mem::forget(clock);
 
+    // Lecteur optique : branchement USB et insertion de disque.
+    let disc_timer = slint::Timer::default();
+    disc_timer.start(slint::TimerMode::Repeated, Duration::from_secs(3), || {
+        with_ctrl(|c| {
+            c.spawn(async {
+                let d = tokio::task::spawn_blocking(crate::disc::detect).await.ok().flatten();
+                post(move |c| c.disc_changed(d));
+            });
+        });
+    });
+    std::mem::forget(disc_timer);
+
     with_ctrl(|c| {
         c.refresh_hdr();
         c.check_update(true);
+        c.disc = crate::disc::detect();
         c.load_manifest();
         c.load_dashboard();
         c.load_tab(TAB_HOME);
@@ -1135,7 +1154,8 @@ impl Controller {
         let ui = self.ui();
         ui.set_screen(self.screen);
         ui.set_dash_area(self.dash_area);
-        ui.set_dash_steam(session::gamescope_available());
+        ui.set_dash_tiles(ModelRc::from(Rc::new(VecModel::from(self.dash_tiles()))));
+        ui.set_dash_disc(self.disc.as_ref().map(|d| d.subtitle()).unwrap_or_default().into());
         ui.set_dash_index(self.dash_index);
         ui.set_hdr_on(self.hdr.enabled);
         ui.set_hdr_available(self.hdr.available);
@@ -1378,9 +1398,9 @@ impl Controller {
 
     fn nav_dash(&mut self, n: Nav) {
         let resume_len = self.dash_items.len() as i32;
-        let steam = session::gamescope_available();
+        let tiles = self.dash_tiles();
         let area_len = |a: i32| match a {
-            0 => if steam { 5 } else { 4 },
+            0 => tiles.len() as i32,
             1 => resume_len,
             _ => 5,
         };
@@ -1398,16 +1418,17 @@ impl Controller {
                     self.dash_index = self.dash_index.min(area_len(a) - 1).max(0);
                 }
             }
-            // Sans Gamescope, la tuile Steam est absente : les suivantes reculent d'un cran.
-            Nav::Accept => match (self.dash_area, if self.dash_area == 0 && !steam && self.dash_index >= 3 { self.dash_index + 1 } else { self.dash_index }) {
+            // Tuiles variables (disque, Steam) : on raisonne par identifiant de tuile.
+            Nav::Accept => match (self.dash_area, if self.dash_area == 0 { tiles.get(self.dash_index as usize).copied().unwrap_or(-1) } else { self.dash_index }) {
                 (0, 0) => {
                     self.switch_tab(TAB_HOME);
                     self.go(SCR_MEDIA);
                 }
                 (0, 1) => self.open_iptv(),
                 (0, 2) => self.open_vacuumtube(),
-                (0, 3) => self.switch_session(Target::Steam),
-                (0, 4) => self.switch_session(Target::Plasma),
+                (0, 3) => self.play_disc(),
+                (0, 4) => self.switch_session(Target::Steam),
+                (0, 5) => self.switch_session(Target::Plasma),
                 (1, i) => {
                     if let Some((r, _)) = self.dash_items.get(i as usize).cloned() {
                         self.open_detail(r);
@@ -2862,7 +2883,7 @@ impl Controller {
                 let key = t.stream_key();
                 let live = *live;
                 let start = if resume && !live { self.state.positions.get(&key).copied().unwrap_or(0.0) } else { 0.0 };
-                let req = PlayRequest { url: url.clone(), title: title.clone(), start_secs: start, http_headers: vec![], report: None, live };
+                let req = PlayRequest { url: url.clone(), title: title.clone(), start_secs: start, http_headers: vec![], report: None, live, mpv_args: vec![] };
                 let hist = self.history_template(&t);
                 self.launch(t, req, (!live).then_some(key), hist);
             }
@@ -2891,6 +2912,7 @@ impl Controller {
                         http_headers: headers,
                         report: Some(PlayReport { item_id: item.id.clone(), media_source_id: ms.id.clone(), play_session_id: session }),
                         live: false,
+                        mpv_args: vec![],
                     },
                     None,
                 )
@@ -2911,7 +2933,7 @@ impl Controller {
                     PlayTarget::Jf { item, .. } => Some(PlayReport { item_id: item.id.clone(), media_source_id: item.id.clone(), play_session_id: None }),
                     _ => None,
                 };
-                (PlayRequest { url: s.url, title: title.clone(), start_secs: start, http_headers: vec![], report, live: false }, key)
+                (PlayRequest { url: s.url, title: title.clone(), start_secs: start, http_headers: vec![], report, live: false, mpv_args: vec![] }, key)
             }
             (PlayTarget::Aio { .. } | PlayTarget::Direct { .. }, SourceEntry::Jf { .. }) | (_, SourceEntry::Torrent(_)) => unreachable!(),
         };
@@ -2969,6 +2991,13 @@ impl Controller {
         self.playing.store(false, Ordering::SeqCst);
         let ui = self.ui();
         ui.set_playing(false);
+        if std::mem::take(&mut self.disc_playing) {
+            // Échec immédiat d'un Blu-ray : presque toujours le chiffrement AACS.
+            let failed = res.as_ref().map_or(true, |o| o.duration <= 0.0);
+            if failed && self.disc.as_ref().is_some_and(|d| d.kind == crate::disc::Kind::Bluray) {
+                self.toast(crate::disc::aacs_hint());
+            }
+        }
         let mut finished = false;
         match res {
             Ok(o) => {
@@ -3204,6 +3233,7 @@ impl Controller {
         vec![
             "Sources & débrideur (configurer sur le téléphone)".into(),
             format!("Clavier physique : {}", session::keyboard_label(&self.svc.cfg.session.keyboard)),
+            format!("Audio : {}", if self.svc.cfg.player.audio == "bitperfect" { "bit-perfect (fréquence d'origine, bitstream HDMI)" } else { "standard (mixage PipeWire)" }),
             match (&self.update, self.update_busy) {
                 (_, true) => "Mise à jour en cours…".to_string(),
                 (Some(r), false) => format!("Installer la mise à jour {} (actuelle : {})", r.version, crate::update::VERSION),
@@ -3265,8 +3295,9 @@ impl Controller {
             Nav::Accept => match self.set_focus {
                 0 => self.open_sources_config(),
                 1 => self.cycle_keyboard(),
-                2 => self.update_action(),
-                3 if self.svc.jf_ready() => {
+                2 => self.toggle_audio(),
+                3 => self.update_action(),
+                4 if self.svc.jf_ready() => {
                     if self.confirmed(21) {
                         self.update_config(|c| {
                             c.jellyfin.token.clear();
@@ -3279,10 +3310,10 @@ impl Controller {
                         self.toast("Jellyfin déconnecté");
                     }
                 }
-                3 => self.quick_connect(),
-                4 => self.cycle_anime_library(),
-                5 => self.import_gelato(),
-                6 => {
+                4 => self.quick_connect(),
+                5 => self.cycle_anime_library(),
+                6 => self.import_gelato(),
+                7 => {
                     self.views.clear();
                     self.load_manifest();
                     self.load_tab(self.tab.min(TAB_SHOWS));
@@ -3307,6 +3338,55 @@ impl Controller {
             self.toast(format!("Sauvegarde impossible : {e:#}"));
         }
         self.svc = Services::new(cfg, self.svc.http.clone());
+    }
+
+    // ─────────────── Disque optique ───────────────
+
+    /// Tuiles du tableau de bord (voir `Dashboard.tiles` dans app.slint).
+    fn dash_tiles(&self) -> Vec<i32> {
+        let mut v = vec![0, 1, 2];
+        if self.disc.is_some() {
+            v.push(3);
+        }
+        if session::gamescope_available() {
+            v.push(4);
+        }
+        v.push(5);
+        v
+    }
+
+    fn disc_changed(&mut self, disc: Option<crate::disc::Disc>) {
+        if disc == self.disc {
+            return;
+        }
+        use crate::disc::Kind;
+        let inserted = disc.as_ref().filter(|d| !matches!(d.kind, Kind::Empty)).map(|d| d.subtitle());
+        let was = self.disc.as_ref().map(|d| d.kind);
+        let tiles_before = self.dash_tiles().len();
+        self.disc = disc;
+        if let Some(s) = inserted.filter(|_| !matches!(was, Some(k) if k != Kind::Empty)) {
+            self.toast(format!("Disque inséré : {s}"));
+        }
+        if self.dash_tiles().len() != tiles_before {
+            self.dash_index = self.dash_index.min(self.dash_tiles().len() as i32 - 1);
+        }
+        self.sync();
+    }
+
+    fn play_disc(&mut self) {
+        use crate::disc::Kind;
+        let Some(d) = self.disc.clone() else { return };
+        let Some((url, args)) = d.mpv() else {
+            return self.toast(match d.kind {
+                Kind::Empty => "Aucun disque dans le lecteur".to_string(),
+                _ => "Disque de données : rien à lire directement".to_string(),
+            });
+        };
+        let title = d.title();
+        let key = format!("disc:{}", d.label);
+        let req = PlayRequest { url: url.clone(), title: title.clone(), start_secs: 0.0, http_headers: vec![], report: None, live: false, mpv_args: args };
+        self.disc_playing = true;
+        self.launch(PlayTarget::Direct { url, title, key, live: false }, req, None, None);
     }
 
     // ─────────────── Mises à jour ───────────────
@@ -3356,6 +3436,17 @@ impl Controller {
                 }
                 c.sync();
             });
+        });
+        self.sync();
+    }
+
+    fn toggle_audio(&mut self) {
+        let bitperfect = self.svc.cfg.player.audio != "bitperfect";
+        self.update_config(|c| c.player.audio = if bitperfect { "bitperfect" } else { "standard" }.into());
+        self.toast(if bitperfect {
+            "Audio bit-perfect : fréquence d'origine, Dolby / DTS envoyés tels quels à l'ampli (HDMI)"
+        } else {
+            "Audio standard : mixage PipeWire"
         });
         self.sync();
     }

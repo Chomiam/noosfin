@@ -79,6 +79,9 @@ L'installateur vérifie votre système, propose les options puis installe tout :
 - 🖥️ **Session dédiée** : Noosfin s'ouvre au démarrage (SDDM) dans KWin, qui gère le HDR. Le curseur est masqué, tout se fait à la manette ou au clavier.
 - 🔀 **Changement de session** : Bureau KDE et Steam (Gamescope, éditions Deck) en un appui, retour automatique au tableau de bord.
 - 🎬 **Lecture mpv** : `gpu-next` + Vulkan Wayland, HDR10 / Dolby Vision transmis à l'écran, overlay moderne à la manette (pistes audio, sous-titres, infos).
+- ✨ **Menu Image** (bouton Start pendant la lecture) : AMD FSR, NVIDIA Image Scaling, Anime4K et ArtCNN (agrandissement par IA), proposés selon la puissance de votre carte graphique ; le choix est mémorisé.
+- 🔊 **Audio bit-perfect** (*Paramètres → Audio*) : PCM à sa fréquence d'origine, Dolby Digital / E-AC3 / DTS / TrueHD envoyés tels quels à l'ampli par HDMI (selon les formats déclarés dans les réglages audio de KDE).
+- 💿 **Disque optique** : une tuile apparaît dès qu'un lecteur (interne ou USB) est branché ; DVD, Blu-ray non protégés et CD audio. Les Blu-ray du commerce (AACS) ne sont pas pris en charge.
 - 🧲 **Sources** : AllDebrid, TorBox ou Real-Debrid ; trackers privés Torznab (C411, Tr4ker, UNIT3D…) ; Knaben, YTS, EZTV, Nyaa, SubsPlease et 35 trackers publics intégrés (définitions Prowlarr interprétées par l'app, sans Prowlarr).
 - 🎯 **Priorités** : langue (VFF, MULTi, VOSTFR…), sous-titres, résolution, HDR, codec, cache, taille.
 - 🛡️ **Réseau** : DNS chiffré contre les blocages des FAI ; FlareSolverr local (podman) pour les sites Cloudflare.
@@ -114,8 +117,9 @@ L'installateur vérifie votre système, propose les options puis installe tout :
 | Ⓨ | Tab | Liste des sources |
 | Ⓧ | F | Favori |
 | LB / RB | Page ↑ / ↓ | Onglet précédent / suivant |
-| Select | — | Informations de lecture (dans mpv) |
-| Start / Guide | Début | Tableau de bord |
+| Start | m | Menu Image : filtres et agrandissement IA (dans mpv) |
+| Select | i | Informations de lecture (dans mpv) |
+| Start (hors lecture) / Guide | Début | Tableau de bord |
 
 ## 🧩 Fonctionnement
 
@@ -173,7 +177,8 @@ GitHub Actions compile dans un conteneur Fedora et publie la release ; l'applica
 
 [Bazzite](https://bazzite.gg) · [Slint](https://slint.dev) · [ratatui](https://ratatui.rs) · [mpv](https://mpv.io) ·
 [TMDB](https://www.themoviedb.org) · [AniList](https://anilist.co) · [ani.zip](https://api.ani.zip) ·
-[Prowlarr Indexers](https://github.com/Prowlarr/Indexers) · [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) ·
+[Prowlarr Indexers](https://github.com/Prowlarr/Indexers) · [Anime4K](https://github.com/bloc97/Anime4K) ·
+[ArtCNN](https://github.com/Artoriuz/ArtCNN) · [agyild (FSR / NIS pour mpv)](https://gist.github.com/agyild) · [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) ·
 [VacuumTube](https://github.com/shy1132/VacuumTube)
 
 Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.

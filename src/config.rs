@@ -47,6 +47,8 @@ pub struct PlayerConfig {
     pub overlay: bool,
     /// « auto » : selon le GPU détecté (vaapi / nvdec), repli logiciel automatique.
     pub hwdec: String,
+    /// « standard » (mixage PipeWire) ou « bitperfect » (fréquence d'origine + bitstream HDMI).
+    pub audio: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +112,7 @@ impl Default for PlayerConfig {
             extra_args: vec![],
             overlay: true,
             hwdec: "auto".into(),
+            audio: "standard".into(),
         }
     }
 }

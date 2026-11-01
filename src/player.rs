@@ -22,6 +22,8 @@ pub struct PlayRequest {
     pub report: Option<PlayReport>,
     /// Flux en direct (IPTV) : reconnexion automatique, pas de position à suivre.
     pub live: bool,
+    /// Options mpv propres à cette lecture (périphérique du disque optique…).
+    pub mpv_args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -54,7 +56,15 @@ pub async fn play(cfg: &PlayerConfig, req: PlayRequest, jf: Option<Jellyfin>) ->
     cmd.arg("--cursor-autohide=always");
     if let Some(osc) = overlay_script().filter(|_| cfg.overlay) {
         cmd.arg(format!("--script={}", osc.display())).arg("--osc=no").arg("--osd-bar=no");
+        // Menu « Image » (bouton Start) : filtres proposés selon la puissance du GPU.
+        let (tier, name) = gpu_profile();
+        let shaders = dirs::data_dir().unwrap_or_default().join("noosfin/shaders");
+        cmd.arg(format!("--script-opts=noosfin-gpu={tier},noosfin-gpuname={name},noosfin-shaders={}", shaders.display()));
     }
+    cmd.args(&req.mpv_args);
+    // Audio bit-perfect : PCM à sa fréquence d'origine, formats compressés envoyés tels quels
+    // (bitstream) à l'ampli HDMI, sans normalisation ni volume logiciel.
+    let restore_rates = if cfg.audio == "bitperfect" { bitperfect_prepare(&mut cmd).await } else { None };
     if req.live {
         cmd.arg("--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5")
             .arg("--cache=yes")
@@ -136,7 +146,92 @@ pub async fn play(cfg: &PlayerConfig, req: PlayRequest, jf: Option<Jellyfin>) ->
         }
     }
     let _ = std::fs::remove_file(&sock);
+    if let Some(rates) = restore_rates {
+        let _ = tokio::process::Command::new("pw-metadata").args(["-n", "settings", "0", "clock.allowed-rates", &rates]).output().await;
+    }
     Ok(out)
+}
+
+async fn output(cmd: &str, args: &[&str]) -> String {
+    // Sortie en anglais : les outils PipeWire traduisent leurs libellés (« Destination n° »).
+    tokio::process::Command::new(cmd).args(args).env("LC_ALL", "C").output().await.map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default()
+}
+
+/// Prépare PipeWire et mpv pour une sortie bit-perfect ; renvoie les fréquences à rétablir.
+async fn bitperfect_prepare(cmd: &mut Command) -> Option<String> {
+    // Sortie HDMI : celle par défaut si c'en est une, sinon la première trouvée.
+    let default = output("pactl", &["get-default-sink"]).await.trim().to_string();
+    let sinks = output("pactl", &["list", "short", "sinks"]).await;
+    let names: Vec<&str> = sinks.lines().filter_map(|l| l.split('\t').nth(1)).collect();
+    let hdmi = if default.contains("hdmi") { Some(default.as_str()) } else { names.iter().copied().find(|n| n.contains("hdmi")) };
+    // Formats déclarés pour la sortie HDMI (réglages audio de KDE / PipeWire) : on n'envoie en
+    // bitstream que ce que l'écran ou l'ampli sait décoder, sinon c'est le silence.
+    let mut spdif = vec![];
+    if let Some(sink) = hdmi {
+        cmd.arg(format!("--audio-device=pipewire/{sink}"));
+        let info = output("pactl", &["list", "sinks"]).await;
+        let block = info.split("Sink #").find(|b| b.contains(&format!("Name: {sink}"))).unwrap_or_default();
+        let codecs = block.lines().find(|l| l.contains("iec958.codecs")).unwrap_or_default().to_uppercase();
+        for (name, opt) in [("\"AC3\"", "ac3"), ("\"EAC3\"", "eac3"), ("\"DTS\"", "dts"), ("\"DTS-HD\"", "dts-hd"), ("\"TRUEHD\"", "truehd")] {
+            if codecs.contains(name) {
+                spdif.push(opt);
+            }
+        }
+    }
+    if !spdif.is_empty() {
+        cmd.arg(format!("--audio-spdif={}", spdif.join(",")));
+    }
+    cmd.args([
+        "--audio-channels=auto",
+        "--audio-normalize-downmix=no",
+        "--volume=100",
+        "--volume-max=100",
+        "--replaygain=no",
+        "--audio-pitch-correction=no",
+    ]);
+    // PipeWire suit la fréquence du fichier (44,1 / 96 / 192 kHz…) au lieu de rééchantillonner.
+    let settings = output("pw-metadata", &["-n", "settings", "0", "clock.allowed-rates"]).await;
+    let previous = settings.split("value:'").nth(1).and_then(|v| v.split('\'').next()).map(String::from);
+    let _ = tokio::process::Command::new("pw-metadata")
+        .args(["-n", "settings", "0", "clock.allowed-rates", "[ 44100 48000 88200 96000 176400 192000 ]"])
+        .output()
+        .await;
+    Some(previous.unwrap_or_else(|| "[ 48000 ]".into()))
+}
+
+/// Puissance de la carte graphique pour les filtres d'image : « low » (iGPU, Steam Deck),
+/// « mid » (APU / dGPU modeste) ou « high » (carte dédiée), et son nom court.
+pub fn gpu_profile() -> (&'static str, String) {
+    let mut best: (u8, String) = (0, "GPU".into());
+    for e in std::fs::read_dir("/sys/class/drm").into_iter().flatten().flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !name.starts_with("card") || name.contains('-') {
+            continue;
+        }
+        let dev = e.path().join("device");
+        let vendor = std::fs::read_to_string(dev.join("vendor")).unwrap_or_default();
+        let vram = std::fs::read_to_string(dev.join("mem_info_vram_total")).ok().and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(0);
+        // Les iGPU Intel sont toujours sur le bus 00:02.0 ; ailleurs, c'est une carte Arc.
+        let slot = std::fs::canonicalize(&dev).map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+        let (rank, label) = match vendor.trim() {
+            "0x10de" => (3, "NVIDIA".to_string()),
+            "0x1002" if vram >= 6 << 30 => (3, format!("AMD {} Go", (vram + (1 << 29)) >> 30)),
+            "0x1002" if vram >= 2 << 30 => (2, format!("AMD {} Go", (vram + (1 << 29)) >> 30)),
+            "0x1002" => (1, "AMD intégré".to_string()),
+            "0x8086" if !slot.ends_with("0000:00:02.0") => (3, "Intel Arc".to_string()),
+            "0x8086" => (1, "Intel intégré".to_string()),
+            _ => continue,
+        };
+        if rank > best.0 {
+            best = (rank, label);
+        }
+    }
+    let tier = match best.0 {
+        3 => "high",
+        2 => "mid",
+        _ => "low",
+    };
+    (tier, best.1)
 }
 
 fn overlay_script() -> Option<std::path::PathBuf> {

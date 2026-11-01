@@ -7,11 +7,15 @@
 --   ↑ ↓             : barre de progression / rangée de boutons
 --   LB / RB         : −30 s / +30 s
 --   X / Y           : pistes audio / sous-titres
---   Start           : lecture / pause
+--   Start / m       : menu « Image » (filtres et agrandissement IA selon le GPU)
 --   Select / i      : informations de lecture
 
 local mp = require "mp"
 local utils = require "mp.utils"
+
+-- Fournis par Noosfin : puissance du GPU (low / mid / high), son nom, dossier des shaders.
+local opts = { gpu = "low", gpuname = "GPU", shaders = "" }
+require("mp.options").read_options(opts, "noosfin")
 
 local W, H = 1920, 1080
 local ov = mp.create_osd_overlay("ass-events")
@@ -43,6 +47,7 @@ local buttons = {
     { id = "skip", label = function() return "Passer l'opening" end, run = function() mp.commandv("seek", 85, "relative") end },
     { id = "audio", label = function() return "Audio" end, run = function() open_tracks("audio") end },
     { id = "sub", label = function() return "Sous-titres" end, run = function() open_tracks("sub") end },
+    { id = "image", label = function() return "Image" end, run = function() open_image() end },
     { id = "info", label = function() return "Infos" end, run = function() state.info = not state.info end },
     { id = "quit", label = function() return "Quitter" end, run = function() mp.command("quit") end },
 }
@@ -193,6 +198,70 @@ function open_tracks(kind)
     state.visible = true
 end
 
+-- ─────────────────────────────── Filtres d'image ───────────────────────────────
+
+local TIERS = { low = 1, mid = 2, high = 3 }
+local A4K = "Anime4K_"
+local presets = {
+    { id = "none", label = "Aucun (rendu mpv standard)", tier = 1, files = {} },
+    { id = "fsr", label = "AMD FSR 1 · agrandissement léger", tier = 1, files = { "FSR.glsl" } },
+    { id = "nis", label = "NVIDIA Image Scaling · agrandissement léger", tier = 1, files = { "NVScaler.glsl" } },
+    { id = "sharp", label = "Netteté seule (NVIDIA Sharpen)", tier = 1, files = { "NVSharpen.glsl" } },
+    { id = "a4k-fast", label = "Anime4K rapide · animes, IA", tier = 1, files = {
+        A4K .. "Clamp_Highlights.glsl", A4K .. "Restore_CNN_M.glsl", A4K .. "Upscale_CNN_x2_M.glsl",
+        A4K .. "AutoDownscalePre_x2.glsl", A4K .. "AutoDownscalePre_x4.glsl", A4K .. "Upscale_CNN_x2_S.glsl" } },
+    { id = "artcnn", label = "ArtCNN rapide · films et séries, IA", tier = 2, files = { "ArtCNN_C4F16.glsl" } },
+    { id = "a4k-hq", label = "Anime4K qualité · animes, IA", tier = 3, files = {
+        A4K .. "Clamp_Highlights.glsl", A4K .. "Restore_CNN_VL.glsl", A4K .. "Upscale_CNN_x2_VL.glsl",
+        A4K .. "AutoDownscalePre_x2.glsl", A4K .. "AutoDownscalePre_x4.glsl", A4K .. "Upscale_CNN_x2_M.glsl" } },
+    { id = "artcnn-hq", label = "ArtCNN qualité · films et séries, IA", tier = 3, files = { "ArtCNN_C4F32.glsl" } },
+}
+local RECOMMENDED = { low = "fsr", mid = "artcnn", high = "artcnn-hq" }
+local current_preset = "none"
+
+-- Choix mémorisé d'une lecture à l'autre.
+local function choice_file() return opts.shaders ~= "" and (opts.shaders .. "/../mpv/image-preset") or nil end
+
+local function apply_preset(p, quiet)
+    local paths = {}
+    for _, f in ipairs(p.files) do paths[#paths + 1] = opts.shaders .. "/" .. f end
+    if #paths == 0 then
+        mp.commandv("change-list", "glsl-shaders", "clr", "")
+    else
+        mp.commandv("change-list", "glsl-shaders", "set", table.concat(paths, ":"))
+    end
+    current_preset = p.id
+    local f = choice_file() and io.open(choice_file(), "w")
+    if f then f:write(p.id); f:close() end
+    if not quiet then mp.osd_message("Image : " .. p.label, 2) end
+end
+
+local function allowed(p) return p.tier <= (TIERS[opts.gpu] or 1) end
+
+function open_image()
+    local items = {}
+    for _, p in ipairs(presets) do
+        if allowed(p) then
+            local rec = RECOMMENDED[opts.gpu] == p.id and "  ★ recommandé" or ""
+            items[#items + 1] = { label = p.label .. rec, selected = p.id == current_preset, run = function() apply_preset(p) end }
+        end
+    end
+    local idx = 1
+    for i, it in ipairs(items) do if it.selected then idx = i end end
+    state.menu = { title = "Image · " .. opts.gpuname, items = items, idx = idx }
+    state.visible = true
+end
+
+local function restore_preset()
+    local f = choice_file() and io.open(choice_file(), "r")
+    if not f then return end
+    local id = f:read("*l")
+    f:close()
+    for _, p in ipairs(presets) do
+        if p.id == id and allowed(p) and p.id ~= "none" then apply_preset(p, true) end
+    end
+end
+
 local function draw_menu(out)
     local m = state.menu
     local rows = math.min(#m.items, 9)
@@ -239,6 +308,15 @@ local function info_lines()
     add("Rendu", (prop("current-vo") or "?") .. "  ·  " .. (prop("gpu-api") or prop("options/gpu-api") or "?"))
     local ap = mp.get_property_native("audio-params") or {}
     add("Audio", (prop("audio-codec-name") or "?") .. (ap["hr-channels"] and ("  ·  " .. ap["hr-channels"]) or "") .. (ap.samplerate and string.format("  ·  %d Hz", ap.samplerate) or "") .. (prop("current-tracks/audio/lang") and ("  ·  " .. prop("current-tracks/audio/lang"):upper()) or ""))
+    local ao = mp.get_property_native("audio-out-params") or {}
+    if ao.format then
+        local out = ao.format:match("^spdif") and ("bitstream " .. ao.format:gsub("^spdif%-", ""):upper() .. " vers l'ampli")
+            or string.format("PCM %s  ·  %d Hz", ao.format, ao.samplerate or 0)
+        add("Sortie audio", out .. ((ao.samplerate and ap.samplerate and ao.samplerate ~= ap.samplerate and not ao.format:match("^spdif")) and "  ·  rééchantillonné" or ""))
+    end
+    for _, p in ipairs(presets) do
+        if p.id == current_preset and p.id ~= "none" then add("Image", p.label) end
+    end
     add("Sous-titres", prop("current-tracks/sub/lang") and prop("current-tracks/sub/lang"):upper() or "aucun")
     local vb, ab = mp.get_property_number("video-bitrate"), mp.get_property_number("audio-bitrate")
     if vb or ab then add("Débit", string.format("%.1f Mb/s", ((vb or 0) + (ab or 0)) / 1e6)) end
@@ -310,7 +388,7 @@ local function handle(btn)
     end
     local shown = state.visible or is_paused()
     if btn == "select" then state.info = not state.info; render(); return end
-    if btn == "menu" then mp.commandv("cycle", "pause"); poke(); return end
+    if btn == "menu" then open_image(); poke(); return end
     if btn == "lb" then seek(-30); poke(); return end
     if btn == "rb" then seek(30); poke(); return end
     if btn == "x" then open_tracks("audio"); poke(); return end
@@ -347,7 +425,7 @@ mp.register_script_message("noosfin-pad", handle)
 
 local keys = {
     UP = "up", DOWN = "down", LEFT = "left", RIGHT = "right", ENTER = "accept", KP_ENTER = "accept",
-    ESC = "back", BS = "back", TAB = "select", i = "select", PGUP = "lb", PGDWN = "rb", a = "x", s = "y",
+    ESC = "back", BS = "back", TAB = "select", i = "select", PGUP = "lb", PGDWN = "rb", a = "x", s = "y", m = "menu",
     GAMEPAD_DPAD_UP = "up", GAMEPAD_DPAD_DOWN = "down", GAMEPAD_DPAD_LEFT = "left", GAMEPAD_DPAD_RIGHT = "right",
     GAMEPAD_ACTION_DOWN = "accept", GAMEPAD_ACTION_RIGHT = "back", GAMEPAD_ACTION_LEFT = "x", GAMEPAD_ACTION_UP = "y",
     GAMEPAD_START = "menu", GAMEPAD_BACK = "select", GAMEPAD_LEFT_SHOULDER = "lb", GAMEPAD_RIGHT_SHOULDER = "rb",
@@ -362,3 +440,4 @@ mp.add_periodic_timer(0.5, function()
     if state.visible or is_paused() or state.info or state.menu then render() end
 end)
 mp.register_event("file-loaded", function() poke() end)
+restore_preset()

@@ -4,6 +4,7 @@ mod aio;
 mod anilist;
 mod app;
 mod config;
+mod disc;
 mod gamepad;
 mod images;
 mod iptv;

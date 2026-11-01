@@ -1,6 +1,6 @@
 [package]
 name = "noosfin"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Tableau de bord HTPC (KWin HDR) : Plasma, Steam Gamescope et médiathèque Jellyfin/AIOStreams orientée anime"
 license = "GPL-3.0-or-later"

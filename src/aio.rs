@@ -1,4 +1,4 @@
-//! Client Stremio pour l'instance AIOStreams (celle utilisée par Gelato).
+//! Client Stremio pour AIOStreams (ou Cinemeta), en appoint de TMDB et du moteur intégré.
 
 use anyhow::{Result, bail};
 use reqwest::Client;
@@ -347,13 +347,6 @@ impl Aio {
     }
 }
 
-/// Extrait l'URL du manifest depuis Gelato.xml.
-pub fn url_from_gelato_xml(xml: &str) -> Option<String> {
-    let start = xml.find("<Url>")? + 5;
-    let end = start + xml[start..].find("</Url>")?;
-    let u = xml[start..end].trim().replace("&amp;", "&");
-    u.starts_with("http").then_some(u)
-}
 
 /// Résolution annoncée par un texte, d'après ses mots (`1080p`, `2160p`, `4K`, `UHD`…).
 /// Un « 1080p » explicite l'emporte sur un « 4K » isolé (ex. « 4K Remaster 1080p »).

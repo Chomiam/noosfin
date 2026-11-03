@@ -374,6 +374,8 @@ component Detail inherits Rectangle {
     in property <int> season;
     in property <int> episode;
     in property <bool> loading;
+    /// Décalage horizontal des onglets de saison (calculé côté Rust d'après les libellés).
+    in property <length> season-scroll;
     callback clicked(int, int);
 
     Image { width: parent.width; height: parent.height; source: root.backdrop; image-fit: cover; opacity: 0.55; }
@@ -401,8 +403,18 @@ component Detail inherits Rectangle {
         width: root.width - self.x - Theme.margin;
         spacing: 16px;
         alignment: start;
-        Text { text: root.title; font-size: 56px; font-weight: 900; color: Theme.text; wrap: word-wrap; }
-        Text { text: root.meta; font-size: 22px; color: Theme.mauve; font-weight: 600; wrap: word-wrap; }
+        // Titres longs : police réduite et deux lignes au plus.
+        property <length> title-size: root.title.character-count > 60 ? 36px : (root.title.character-count > 34 ? 44px : 56px);
+        Text {
+            text: root.title;
+            font-size: parent.title-size;
+            font-weight: 900;
+            color: Theme.text;
+            wrap: word-wrap;
+            max-height: parent.title-size * 1.3 * 2;
+            overflow: elide;
+        }
+        Text { text: root.meta; font-size: 22px; color: Theme.mauve; font-weight: 600; overflow: elide; }
         HorizontalLayout {
             spacing: 10px;
             alignment: start;
@@ -413,7 +425,7 @@ component Detail inherits Rectangle {
             font-size: 21px;
             color: Theme.subtext;
             wrap: word-wrap;
-            max-height: 21px * 1.45 * (root.has-episodes ? 4 : 9);
+            max-height: 21px * 1.45 * (root.has-episodes ? (root.title.character-count > 34 ? 3 : 4) : 9);
             overflow: elide;
         }
         HorizontalLayout {
@@ -435,7 +447,8 @@ component Detail inherits Rectangle {
         height: 56px;
         clip: true;
         HorizontalLayout {
-            x: Theme.margin - (root.area == 1 ? max(0, root.season - 5) * 150px : 0);
+            x: Theme.margin - root.season-scroll;
+            animate x { duration: 180ms; easing: ease-out; }
             spacing: 10px;
             alignment: start;
             for s[i] in root.seasons : Rectangle {
@@ -1138,6 +1151,7 @@ export component AppWindow inherits Window {
     in property <[EpisodeData]> d-episodes;
     in property <int> d-area;
     in property <int> d-button;
+    in property <length> d-season-scroll;
     in property <int> d-season;
     in property <int> d-episode;
     in property <bool> d-loading;
@@ -1284,6 +1298,7 @@ export component AppWindow inherits Window {
             area: root.d-area;
             button: root.d-button;
             season: root.d-season;
+            season-scroll: root.d-season-scroll;
             episode: root.d-episode;
             loading: root.d-loading;
             clicked(a, i) => { root.click(2, a, i); }

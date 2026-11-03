@@ -18,7 +18,7 @@ use slint::platform::Key;
 use slint::{ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel, Weak};
 use tokio::runtime::Handle;
 
-use crate::aio::{self, Aio, CatalogDef, Meta, StreamInfo, Video};
+use crate::aio::{Aio, CatalogDef, Meta, StreamInfo, Video};
 use crate::anilist::{self, AniList, Anime};
 use crate::config::Config;
 use crate::gamepad::{self, Pad};
@@ -529,6 +529,8 @@ pub struct Controller {
     sc_cfg: scraper::config::Sources,
     sc_focus: i32,
     sc_msg: String,
+    sc_builtin_open: bool,
+    sc_preset: usize,
     sc_model: Rc<VecModel<crate::ScRow>>,
     /// Lecteur optique (interne ou USB) et disque inséré.
     disc: Option<crate::disc::Disc>,
@@ -631,6 +633,8 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
         sc_cfg: scraper::config::Sources::default(),
         sc_focus: 1,
         sc_msg: String::new(),
+        sc_builtin_open: false,
+        sc_preset: 0,
         sc_model: Rc::new(VecModel::default()),
         catalogs: vec![],
         aio_name: String::new(),
@@ -894,6 +898,16 @@ fn progress_card(id: i64, p: &AnimeProgress) -> (MediaRef, CardInfo) {
             watched: false,
         },
     )
+}
+
+/// Coupe un texte trop long au dernier mot entier, suivi de « … ».
+fn ellipsize(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max).collect();
+    let cut = cut.rsplit_once(' ').map_or(cut.as_str(), |(a, _)| a);
+    format!("{}…", cut.trim_end_matches([' ', ',', ':', '.', '-']))
 }
 
 /// Résumé sans la ligne de genres ajoutée en tête des fiches d'anime.
@@ -1239,6 +1253,14 @@ impl Controller {
             ui.set_d_button(d.button);
             ui.set_d_episode(d.ep);
             ui.set_d_season(d.season);
+            // Onglets de saison : largeur estimée d'après le libellé (police 20 px, ~11,5 px par
+            // caractère + marges), pour garder la saison sélectionnée à l'écran.
+            let widths: Vec<f32> = d.data.seasons.iter().map(|(_, n)| n.chars().count() as f32 * 11.5 + 40.0 + 10.0).collect();
+            let before: f32 = widths.iter().take(d.season.max(0) as usize).sum();
+            let total: f32 = widths.iter().sum();
+            let view = ui.window().size().width as f32 / ui.window().scale_factor() - 2.0 * 64.0;
+            let scroll = (before - view / 3.0).clamp(0.0, (total - view).max(0.0));
+            ui.set_d_season_scroll(scroll);
         }
         let hints = match self.screen {
                 SCR_MEDIA if self.tab == TAB_HISTORY => "Ⓐ Ouvrir    Ⓨ Retirer    Ⓑ Accueil    LB / RB Onglets",
@@ -2215,7 +2237,8 @@ impl Controller {
         let ui = self.ui();
         let poster = self.images.get(data.poster.as_deref());
         let backdrop = self.images.get(data.backdrop.as_deref());
-        ui.set_d_title(data.title.clone().into());
+        // Titres interminables (light novels) : coupés au mot, deux lignes au plus.
+        ui.set_d_title(ellipsize(&data.title, 80).into());
         ui.set_d_meta(data.meta.clone().into());
         ui.set_d_overview(data.overview.clone().into());
         ui.set_d_poster(poster);
@@ -3290,7 +3313,6 @@ impl Controller {
                 (Some(r), false) => format!("Installer la mise à jour {} (actuelle : {})", r.version, crate::update::VERSION),
                 (None, false) => format!("Rechercher une mise à jour (version {})", crate::update::VERSION),
             },
-            "Importer AIOStreams depuis Gelato (SSH)".into(),
             "Recharger la médiathèque".into(),
         ]
     }
@@ -3340,8 +3362,7 @@ impl Controller {
                 1 => self.cycle_keyboard(),
                 2 => self.toggle_audio(),
                 3 => self.update_action(),
-                4 => self.import_gelato(),
-                5 => {
+                4 => {
                     self.views.clear();
                     self.load_manifest();
                     self.load_tab(self.tab.min(TAB_SHOWS));
@@ -3555,31 +3576,6 @@ impl Controller {
             Err(e) => self.toast(format!("Clavier : {e:#}")),
         }
         self.sync();
-    }
-
-    fn import_gelato(&mut self) {
-        let host = self.svc.cfg.aiostreams.gelato_ssh.clone();
-        if host.is_empty() {
-            return self.toast("Renseignez [aiostreams] gelato_ssh = \"utilisateur@serveur\" dans config.toml");
-        }
-        self.toast(format!("Lecture de la configuration Gelato sur {host}…"));
-        self.spawn(async move {
-            let out = tokio::process::Command::new("ssh")
-                .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", &host, "docker exec jellyfin cat /config/plugins/configurations/Gelato.xml"])
-                .output()
-                .await;
-            let url = out.ok().and_then(|o| aio::url_from_gelato_xml(&String::from_utf8_lossy(&o.stdout)));
-            post(move |c| match url {
-                Some(u) => {
-                    c.update_config(|cfg| cfg.aiostreams.manifest_url = u);
-                    c.catalogs.clear();
-                    c.load_manifest();
-                    c.toast("AIOStreams importé depuis Gelato");
-                    c.sync();
-                }
-                None => c.toast("URL introuvable (SSH ou Gelato.xml)"),
-            });
-        });
     }
 }
 

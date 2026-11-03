@@ -38,7 +38,8 @@ enum Row {
     Tmdb,
     TmdbLang,
     Tracker(usize),
-    AddTracker(&'static str, &'static str, u64),
+    AddTracker,
+    BuiltinGroup,
     Public(&'static str, &'static str),
     Builtin(String),
     Dns,
@@ -51,6 +52,10 @@ enum Row {
     ExcludeCam,
     Phone,
 }
+
+/// Trackers privés proposés à l'ajout : (nom, URL Torznab, délai entre requêtes).
+const PRESETS: [(&str, &str, u64); 3] =
+    [("C411", "https://c411.org/api/torznab", 4100), ("Tr4ker", "https://tr4ker.net/api/torznab/all", 1000), ("Torznab", "", 1000)];
 
 const PUBLIC: [(&str, &str); 8] = [
     ("knaben", "Knaben · 1337x, TorrentGalaxy, TPB…"),
@@ -131,20 +136,21 @@ fn rotate_first(list: &mut Vec<String>, all: &[&str]) {
 impl Controller {
     fn sc_rows(&self) -> Vec<Row> {
         let s = &self.sc_cfg;
-        let mut v = vec![Row::Header("Débrideur"), Row::Debrid, Row::DebridKey, Row::DebridTest, Row::Uncached];
+        let mut v = vec![Row::Header("Téléphone"), Row::Phone];
+        v.extend([Row::Header("Débrideur"), Row::Debrid, Row::DebridKey, Row::DebridTest, Row::Uncached]);
         v.extend([Row::Header("Catalogues"), Row::Tmdb, Row::TmdbLang]);
         v.push(Row::Header("Trackers privés"));
         v.extend((0..s.indexers.len()).map(Row::Tracker));
-        v.push(Row::AddTracker("C411", "https://c411.org/api/torznab", 4100));
-        v.push(Row::AddTracker("Tr4ker", "https://tr4ker.net/api/torznab/all", 1000));
-        v.push(Row::AddTracker("Torznab", "", 1000));
+        v.push(Row::AddTracker);
         v.push(Row::Header("Sources publiques"));
         v.extend(PUBLIC.iter().map(|(k, l)| Row::Public(k, l)));
-        v.push(Row::Header("Trackers intégrés"));
-        v.extend(scraper::cardigann::all().iter().map(|d| Row::Builtin(d.id.clone())));
+        // 35 trackers intégrés : repliés derrière une seule ligne pour garder la page courte.
+        v.push(Row::BuiltinGroup);
+        if self.sc_builtin_open {
+            v.extend(scraper::cardigann::all().iter().map(|d| Row::Builtin(d.id.clone())));
+        }
         v.extend([Row::Header("Réseau"), Row::Dns, Row::Flare, Row::NetTest]);
         v.extend([Row::Header("Priorités"), Row::Language, Row::AnimeLanguage, Row::Resolution, Row::CachedOnly, Row::ExcludeCam]);
-        v.extend([Row::Header("Téléphone"), Row::Phone]);
         v
     }
 
@@ -183,7 +189,12 @@ impl Controller {
                 let ix = &s.indexers[*i];
                 row(format!("{} · {}", ix.name, masked(&ix.api_key)), String::new(), ix.enabled as i32)
             }
-            Row::AddTracker(name, ..) => row(format!("Ajouter {name}"), "+".into(), -1),
+            Row::AddTracker => row("Ajouter un tracker".into(), format!("‹ {} ›", PRESETS[self.sc_preset].0), -1),
+            Row::BuiltinGroup => row(
+                format!("Trackers intégrés · {} actif(s) sur {}", s.public.trackers.len(), scraper::cardigann::all().len()),
+                if self.sc_builtin_open { "▾ masquer".into() } else { "▸ afficher".into() },
+                -1,
+            ),
             Row::Public(k, l) => toggle(l, public_on(s, k)),
             Row::Builtin(id) => {
                 let d = scraper::cardigann::get(id);
@@ -227,10 +238,12 @@ impl Controller {
 
     pub(super) fn open_sc(&mut self) {
         self.sc_cfg = Sources::load();
-        self.sc_focus = 1;
+        self.sc_focus = 3;
         self.sc_msg.clear();
-        self.ui().set_sc_has_qr(false);
+        self.sc_builtin_open = false;
         self.go(SCR_SRC_CFG);
+        // QR code affiché d'emblée, en haut à droite.
+        self.sc_phone();
     }
 
     pub(super) fn sc_sync(&mut self) {
@@ -303,9 +316,8 @@ impl Controller {
             Nav::PrevTab => self.sc_focus = (0..6).fold(self.sc_focus, |f, _| step(f, -1)),
             Nav::NextTab => self.sc_focus = (0..6).fold(self.sc_focus, |f, _| step(f, 1)),
             Nav::Accept | Nav::Left | Nav::Right => {
-                let back = n == Nav::Left;
                 if let Some(r) = row {
-                    self.sc_activate(r, back);
+                    self.sc_activate(r, n);
                 }
             }
             // Ⓨ : tester le tracker sélectionné ; Ⓧ : retirer un tracker privé.
@@ -329,7 +341,8 @@ impl Controller {
         }
     }
 
-    fn sc_activate(&mut self, r: Row, back: bool) {
+    fn sc_activate(&mut self, r: Row, n: Nav) {
+        let back = n == Nav::Left;
         let d: i32 = if back { -1 } else { 1 };
         let cycle = |i: usize, n: usize| ((i as i32 + d).rem_euclid(n as i32)) as usize;
         let s = &mut self.sc_cfg;
@@ -355,7 +368,18 @@ impl Controller {
                 }
                 s.indexers[i].enabled = !s.indexers[i].enabled;
             }
-            Row::AddTracker(name, url, interval) => return self.sc_edit(Edit::AddTracker { name, url, interval }),
+            Row::AddTracker => {
+                if n != Nav::Accept {
+                    self.sc_preset = cycle(self.sc_preset, PRESETS.len());
+                    return;
+                }
+                let (name, url, interval) = PRESETS[self.sc_preset];
+                return self.sc_edit(Edit::AddTracker { name, url, interval });
+            }
+            Row::BuiltinGroup => {
+                self.sc_builtin_open = !self.sc_builtin_open;
+                return;
+            }
             Row::Public(k, _) => {
                 let f = public_flag(s, k);
                 *f = !*f;

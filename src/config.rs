@@ -30,10 +30,8 @@ pub struct JellyfinConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AioConfig {
-    /// URL complète du manifest Stremio (la même que celle de Gelato).
+    /// URL complète du manifest Stremio (AIOStreams).
     pub manifest_url: String,
-    /// Hôte SSH du NAS pour réimporter l'URL depuis la config Gelato.
-    pub gelato_ssh: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,7 +97,7 @@ impl Default for JellyfinConfig {
 
 impl Default for AioConfig {
     fn default() -> Self {
-        Self { manifest_url: String::new(), gelato_ssh: String::new() }
+        Self { manifest_url: String::new() }
     }
 }
 

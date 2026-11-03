@@ -712,6 +712,11 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
     clock.start(slint::TimerMode::Repeated, Duration::from_secs(1), tick);
     std::mem::forget(clock);
 
+    // Mises à jour : vérifiées au lancement, puis toutes les 6 h (PC laissé allumé).
+    let update_timer = slint::Timer::default();
+    update_timer.start(slint::TimerMode::Repeated, Duration::from_secs(6 * 3600), || with_ctrl(|c| c.check_update(true)));
+    std::mem::forget(update_timer);
+
     // Lecteur optique : branchement USB et insertion de disque.
     let disc_timer = slint::Timer::default();
     disc_timer.start(slint::TimerMode::Repeated, Duration::from_secs(3), || {
@@ -1230,6 +1235,9 @@ impl Controller {
         ui.set_dash_area(self.dash_area);
         ui.set_dash_tiles(ModelRc::from(Rc::new(VecModel::from(self.dash_tiles()))));
         ui.set_dash_disc(self.disc.as_ref().map(|d| d.subtitle()).unwrap_or_default().into());
+        ui.set_dash_update(self.update.as_ref().map(|r| r.version.clone()).unwrap_or_default().into());
+        // Ligne « Installer la mise à jour » des paramètres (index 3).
+        ui.set_set_highlight(if self.update.is_some() { 3 } else { -1 });
         ui.set_dash_index(self.dash_index);
         ui.set_hdr_on(self.hdr.enabled);
         ui.set_hdr_available(self.hdr.available);
@@ -1495,7 +1503,7 @@ impl Controller {
         let area_len = |a: i32| match a {
             0 => tiles.len() as i32,
             1 => resume_len,
-            _ => 5,
+            _ => if self.update.is_some() { 6 } else { 5 },
         };
         match n {
             Nav::Left if self.dash_index > 0 => self.dash_index -= 1,
@@ -1512,7 +1520,17 @@ impl Controller {
                 }
             }
             // Tuiles variables (disque, Steam) : on raisonne par identifiant de tuile.
-            Nav::Accept => match (self.dash_area, if self.dash_area == 0 { tiles.get(self.dash_index as usize).copied().unwrap_or(-1) } else { self.dash_index }) {
+            Nav::Accept => match (
+                self.dash_area,
+                match self.dash_area {
+                    0 => tiles.get(self.dash_index as usize).copied().unwrap_or(-1),
+                    // Barre système : le bouton « Mettre à jour » (s'il est là) prend la place 2.
+                    2 if self.update.is_some() && self.dash_index == 2 => 9,
+                    2 if self.update.is_some() && self.dash_index > 2 => self.dash_index - 1,
+                    _ => self.dash_index,
+                },
+            ) {
+                (2, 9) => self.update_action(),
                 (0, 0) => {
                     self.switch_tab(TAB_HOME);
                     self.go(SCR_MEDIA);

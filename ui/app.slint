@@ -71,6 +71,8 @@ component Dashboard inherits Rectangle {
     /// 4 Steam (éditions Deck hors NVIDIA), 5 Bureau KDE.
     in property <[int]> tiles: [0, 1, 2, 4, 5];
     in property <string> disc-sub;
+    /// Version disponible sur GitHub (vide : à jour).
+    in property <string> update-version;
     callback clicked(int, int);
 
     Rectangle {
@@ -175,24 +177,32 @@ component Dashboard inherits Rectangle {
             focused: root.area == 2 && root.index == 1;
             clicked => { root.clicked(2, 1); }
         }
+        // Mise à jour disponible : bouton mis en avant juste après Paramètres.
+        if root.update-version != "" : IconButton {
+            icon: @image-url("../assets/update.svg");
+            text: "Mettre à jour (" + root.update-version + ")";
+            highlight: true;
+            focused: root.area == 2 && root.index == 2;
+            clicked => { root.clicked(2, 2); }
+        }
         Rectangle { horizontal-stretch: 1; }
         IconButton {
             icon: @image-url("../assets/logout.svg");
             text: "Relancer l'interface";
-            focused: root.area == 2 && root.index == 2;
-            clicked => { root.clicked(2, 2); }
+            focused: root.area == 2 && root.index == 2 + (root.update-version != "" ? 1 : 0);
+            clicked => { root.clicked(2, 2 + (root.update-version != "" ? 1 : 0)); }
         }
         IconButton {
             icon: @image-url("../assets/restart.svg");
             text: "Redémarrer";
-            focused: root.area == 2 && root.index == 3;
-            clicked => { root.clicked(2, 3); }
+            focused: root.area == 2 && root.index == 3 + (root.update-version != "" ? 1 : 0);
+            clicked => { root.clicked(2, 3 + (root.update-version != "" ? 1 : 0)); }
         }
         IconButton {
             icon: @image-url("../assets/power.svg");
             text: "Éteindre";
-            focused: root.area == 2 && root.index == 4;
-            clicked => { root.clicked(2, 4); }
+            focused: root.area == 2 && root.index == 4 + (root.update-version != "" ? 1 : 0);
+            clicked => { root.clicked(2, 4 + (root.update-version != "" ? 1 : 0)); }
         }
     }
 }
@@ -740,6 +750,8 @@ component Settings inherits Rectangle {
     in property <[string]> lines;
     in property <[string]> actions;
     in property <int> current;
+    /// Ligne mise en avant (mise à jour disponible), -1 sinon.
+    in property <int> highlight: -1;
     in property <string> code;
     in property <string> code-title;
     in property <string> code-hint;
@@ -760,13 +772,13 @@ component Settings inherits Rectangle {
         for a[i] in root.actions : Rectangle {
             height: 64px;
             border-radius: 16px;
-            background: i == root.current ? Theme.text : Theme.surface0;
+            background: i == root.current ? Theme.text : (i == root.highlight ? Theme.mauve : Theme.surface0);
             Text {
                 x: 24px;
                 text: a;
                 font-size: 22px;
                 font-weight: 700;
-                color: i == root.current ? Theme.crust : Theme.text;
+                color: i == root.current || i == root.highlight ? Theme.crust : Theme.text;
             }
             TouchArea { clicked => { root.clicked(i); } }
         }
@@ -1121,6 +1133,8 @@ export component AppWindow inherits Window {
     in property <image> sc-qr;
     in property <bool> sc-has-qr;
     in property <string> dash-disc;
+    in property <string> dash-update;
+    in property <int> set-highlight: -1;
     in property <bool> hdr-on;
     in property <bool> hdr-available;
     in property <string> hdr-output;
@@ -1253,6 +1267,7 @@ export component AppWindow inherits Window {
             media-status: root.media-status;
             tiles: root.dash-tiles;
             disc-sub: root.dash-disc;
+            update-version: root.dash-update;
             clicked(a, i) => { root.click(0, a, i); }
         }
 
@@ -1331,6 +1346,7 @@ export component AppWindow inherits Window {
             lines: root.set-lines;
             actions: root.set-actions;
             current: root.set-focus;
+            highlight: root.set-highlight;
             code: root.set-code;
             code-title: root.set-code-title;
             code-hint: root.set-code-hint;

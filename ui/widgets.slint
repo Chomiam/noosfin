@@ -179,11 +179,13 @@ export component IconButton inherits Rectangle {
     in property <string> text;
     in property <bool> focused;
     in property <bool> on;
+    /// Mis en avant (mise à jour disponible) : fond coloré même sans le focus.
+    in property <bool> highlight;
     callback clicked;
     height: 64px;
     width: lbl.preferred-width + 92px;
     border-radius: 32px;
-    background: focused ? Theme.text : Theme.surface0;
+    background: focused ? Theme.text : (highlight ? Theme.mauve : Theme.surface0);
     animate background { duration: 140ms; }
     HorizontalLayout {
         padding-left: 22px;
@@ -196,13 +198,13 @@ export component IconButton inherits Rectangle {
                 source: root.icon;
                 width: 28px;
                 height: 28px;
-                colorize: root.focused ? Theme.crust : (root.on ? Theme.green : Theme.text);
+                colorize: root.focused || root.highlight ? Theme.crust : (root.on ? Theme.green : Theme.text);
             }
         }
         lbl := Text {
             text: root.text;
             vertical-alignment: center;
-            color: root.focused ? Theme.crust : Theme.text;
+            color: root.focused || root.highlight ? Theme.crust : Theme.text;
             font-size: 21px;
             font-weight: 700;
         }

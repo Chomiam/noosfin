@@ -37,7 +37,9 @@ pub async fn check(http: &Client) -> Result<Option<Release>> {
         .json()
         .await?;
     let tag = v["tag_name"].as_str().context("release sans tag")?.to_string();
-    if !newer(&tag, VERSION) {
+    // Pour les tests : NOOSFIN_VERSION=0.0.1 simule une installation ancienne.
+    let current = std::env::var("NOOSFIN_VERSION").unwrap_or_else(|_| VERSION.to_string());
+    if !newer(&tag, &current) {
         return Ok(None);
     }
     let url = v["assets"]

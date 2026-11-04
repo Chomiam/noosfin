@@ -60,6 +60,8 @@ pub struct PlayerConfig {
     pub sub_scale: f64,
     /// Sous-titres en haut de l'image plutôt qu'en bas.
     pub sub_top: bool,
+    /// Sons de navigation de l'interface.
+    pub ui_sounds: bool,
 }
 
 /// Langues proposées dans les paramètres Audio / Sous-titres : (code, libellé).
@@ -191,6 +193,7 @@ impl Default for PlayerConfig {
             subs_off_with_dub_video: true,
             sub_scale: 1.0,
             sub_top: false,
+            ui_sounds: true,
         }
     }
 }

@@ -1416,6 +1416,15 @@ impl Controller {
         if self.external {
             return;
         }
+        if self.svc.cfg.player.ui_sounds {
+            use crate::sounds::{Sound, play};
+            match n {
+                Nav::Up | Nav::Down | Nav::Left | Nav::Right | Nav::PrevTab | Nav::NextTab => play(Sound::Move),
+                Nav::Accept => play(Sound::Select),
+                Nav::Back => play(Sound::Back),
+                _ => {}
+            }
+        }
         if let Some(d) = self.dialog {
             self.nav_dialog(d, n);
             self.sync();

@@ -13,6 +13,7 @@ mod player;
 mod qr;
 mod scraper;
 mod segments;
+mod sounds;
 mod session;
 mod state;
 mod tmdb;

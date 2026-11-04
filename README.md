@@ -80,6 +80,8 @@ L'installateur vérifie votre système, propose les options puis installe tout :
 - 🔀 **Changement de session** : Bureau KDE et Steam (Gamescope, éditions Deck) en un appui, retour automatique au tableau de bord.
 - 🎬 **Lecture mpv** : `gpu-next` + Vulkan Wayland, HDR10 / Dolby Vision transmis à l'écran, overlay à icônes piloté à la manette (pistes audio, sous-titres, infos), B deux fois pour quitter.
 - ⏭️ **Intro, récap et générique** : repérés grâce à [AniSkip](https://aniskip.com) (animes), [IntroDB](https://introdb.app) (séries) et aux chapitres du fichier, affichés sur la timeline ; popups « Passer l'intro » et « Épisode suivant ».
+- 🎞️ **Bandes-annonces** : bouton sur les fiches de films, séries et animes (TMDB, AniList), ouvertes dans VacuumTube.
+- 🔔 **Sons de navigation** synthétisés par l'application, désactivables dans *Paramètres → Audio*.
 - 🗣️ **Langues** (*Paramètres → Audio / Sous-titres*) : ordre de priorité des langues audio et des sous-titres, séparément pour les animes et pour les films / séries ; pas de sous-titres en VF ; taille et position des sous-titres.
 - ✨ **Menu Image** (bouton Start pendant la lecture) : AMD FSR, NVIDIA Image Scaling, Anime4K et ArtCNN (agrandissement par IA), proposés selon la puissance de votre carte graphique ; le choix est mémorisé.
 - 🔊 **Audio bit-perfect** (*Paramètres → Audio*) : PCM à sa fréquence d'origine, Dolby Digital / E-AC3 / DTS / TrueHD envoyés tels quels à l'ampli par HDMI (selon les formats déclarés dans les réglages audio de KDE).

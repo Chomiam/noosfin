@@ -24,6 +24,7 @@ enum List {
 enum Row {
     Header(&'static str),
     Output,
+    UiSounds,
     Lang(List, &'static str),
     OffWithDub(bool),
     Size,
@@ -75,7 +76,7 @@ impl Controller {
         let mut v = vec![];
         match self.prefs_page {
             PrefsPage::Audio => {
-                v.extend([Row::Header("Sortie audio"), Row::Output]);
+                v.extend([Row::Header("Sortie audio"), Row::Output, Row::UiSounds]);
                 v.push(Row::Header("Animes · langue audio"));
                 v.extend(self.lang_rows(List::AudioAnime));
                 v.push(Row::Header("Films et séries · langue audio"));
@@ -104,6 +105,7 @@ impl Controller {
                 if p.audio == "bitperfect" { "Bit-perfect · bitstream HDMI".into() } else { "Standard · mixage PipeWire".into() },
                 -1,
             ),
+            Row::UiSounds => row("Sons de navigation de l'interface".into(), String::new(), p.ui_sounds as i32),
             Row::Lang(l, code) => {
                 let rank = list(p, *l).iter().position(|c| c == code);
                 let label = match rank {
@@ -164,6 +166,7 @@ impl Controller {
         let d: i32 = if n == Nav::Left { -1 } else { 1 };
         match r {
             Row::Header(_) => {}
+            Row::UiSounds => self.update_config(|c| c.player.ui_sounds = !c.player.ui_sounds),
             Row::Output => self.update_config(|c| c.player.audio = if c.player.audio == "bitperfect" { "standard".into() } else { "bitperfect".into() }),
             Row::Lang(l, code) => {
                 let mut focus_code = None;

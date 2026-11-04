@@ -12,6 +12,7 @@ mod jellyfin;
 mod player;
 mod qr;
 mod scraper;
+mod segments;
 mod session;
 mod state;
 mod tmdb;

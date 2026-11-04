@@ -47,6 +47,78 @@ pub struct PlayerConfig {
     pub hwdec: String,
     /// « standard » (mixage PipeWire) ou « bitperfect » (fréquence d'origine + bitstream HDMI).
     pub audio: String,
+    /// Langues audio par ordre de préférence (codes : ja, fr, en…), animes puis films / séries.
+    pub audio_anime: Vec<String>,
+    pub audio_video: Vec<String>,
+    /// Langues de sous-titres par ordre de préférence ; vide = sans sous-titres.
+    pub subs_anime: Vec<String>,
+    pub subs_video: Vec<String>,
+    /// Pas de sous-titres quand l'audio choisi est déjà dans la langue des sous-titres (VF).
+    pub subs_off_with_dub_anime: bool,
+    pub subs_off_with_dub_video: bool,
+    /// Taille des sous-titres (1.0 = normale).
+    pub sub_scale: f64,
+    /// Sous-titres en haut de l'image plutôt qu'en bas.
+    pub sub_top: bool,
+}
+
+/// Langues proposées dans les paramètres Audio / Sous-titres : (code, libellé).
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("fr", "Français"),
+    ("ja", "Japonais"),
+    ("en", "Anglais"),
+    ("es", "Espagnol"),
+    ("de", "Allemand"),
+    ("it", "Italien"),
+    ("ko", "Coréen"),
+    ("zh", "Chinois"),
+];
+
+pub fn language_label(code: &str) -> &str {
+    LANGUAGES.iter().find(|l| l.0 == code).map_or(code, |l| l.1)
+}
+
+/// Codes ISO 639-1 et 639-2 reconnus par mpv pour une langue.
+fn mpv_codes(code: &str) -> &'static str {
+    match code {
+        "fr" => "fre,fra,fr",
+        "ja" => "jpn,ja,jp",
+        "en" => "eng,en",
+        "es" => "spa,es",
+        "de" => "ger,deu,de",
+        "it" => "ita,it",
+        "ko" => "kor,ko",
+        "zh" => "chi,zho,zh",
+        _ => "",
+    }
+}
+
+impl PlayerConfig {
+    /// Options mpv de langue et de sous-titres pour une lecture (anime ou film / série).
+    pub fn language_args(&self, anime: bool) -> Vec<String> {
+        let (audio, subs, off) =
+            if anime { (&self.audio_anime, &self.subs_anime, self.subs_off_with_dub_anime) } else { (&self.audio_video, &self.subs_video, self.subs_off_with_dub_video) };
+        let join = |l: &Vec<String>| l.iter().map(|c| mpv_codes(c)).filter(|c| !c.is_empty()).collect::<Vec<_>>().join(",");
+        let mut v = vec![];
+        if !audio.is_empty() {
+            v.push(format!("--alang={}", join(audio)));
+        }
+        if subs.is_empty() {
+            v.push("--sid=no".into());
+        } else {
+            v.push(format!("--slang={}", join(subs)));
+            // « forced » : on garde les sous-titres forcés (panneaux, chansons) même en VF.
+            v.push(format!("--subs-with-matching-audio={}", if off { "forced" } else { "yes" }));
+        }
+        if (self.sub_scale - 1.0).abs() > 0.01 {
+            v.push(format!("--sub-scale={:.2}", self.sub_scale));
+        }
+        if self.sub_top {
+            v.push("--sub-align-y=top".into());
+            v.push("--sub-pos=6".into());
+        }
+        v
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +183,14 @@ impl Default for PlayerConfig {
             overlay: true,
             hwdec: "auto".into(),
             audio: "standard".into(),
+            audio_anime: vec!["ja".into(), "fr".into(), "en".into()],
+            audio_video: vec!["fr".into(), "en".into()],
+            subs_anime: vec!["fr".into(), "en".into()],
+            subs_video: vec!["fr".into()],
+            subs_off_with_dub_anime: true,
+            subs_off_with_dub_video: true,
+            sub_scale: 1.0,
+            sub_top: false,
         }
     }
 }

@@ -4,6 +4,7 @@
 //! renvoient leurs résultats avec `post`, qui s'exécute dans la boucle d'événements Slint.
 
 mod iptv_ui;
+mod prefs_ui;
 mod sources_ui;
 
 use std::cell::RefCell;
@@ -119,6 +120,7 @@ const SCR_IPTV_PROFILES: i32 = 6;
 const SCR_IPTV_FORM: i32 = 7;
 const SCR_IPTV: i32 = 8;
 const SCR_SRC_CFG: i32 = 9;
+const SCR_PREFS: i32 = 10;
 
 const TAB_HOME: i32 = 0;
 const TAB_ANIME: i32 = 1;
@@ -530,6 +532,8 @@ pub struct Controller {
     sc_focus: i32,
     sc_msg: String,
     sc_builtin_open: bool,
+    /// Page Audio ou Sous-titres des paramètres (même écran que les sources).
+    prefs_page: prefs_ui::PrefsPage,
     sc_preset: usize,
     sc_model: Rc<VecModel<crate::ScRow>>,
     /// Lecteur optique (interne ou USB) et disque inséré.
@@ -634,6 +638,7 @@ pub fn install(ui: &AppWindow, rt: Handle, start_media: bool) {
         sc_focus: 1,
         sc_msg: String::new(),
         sc_builtin_open: false,
+        prefs_page: prefs_ui::PrefsPage::Audio,
         sc_preset: 0,
         sc_model: Rc::new(VecModel::default()),
         catalogs: vec![],
@@ -1236,8 +1241,8 @@ impl Controller {
         ui.set_dash_tiles(ModelRc::from(Rc::new(VecModel::from(self.dash_tiles()))));
         ui.set_dash_disc(self.disc.as_ref().map(|d| d.subtitle()).unwrap_or_default().into());
         ui.set_dash_update(self.update.as_ref().map(|r| r.version.clone()).unwrap_or_default().into());
-        // Ligne « Installer la mise à jour » des paramètres (index 3).
-        ui.set_set_highlight(if self.update.is_some() { 3 } else { -1 });
+        // Ligne « Installer la mise à jour » des paramètres (index 4).
+        ui.set_set_highlight(if self.update.is_some() { 4 } else { -1 });
         ui.set_dash_index(self.dash_index);
         ui.set_hdr_on(self.hdr.enabled);
         ui.set_hdr_available(self.hdr.available);
@@ -1255,6 +1260,9 @@ impl Controller {
         ui.set_set_focus(self.set_focus);
         if self.screen == SCR_SRC_CFG {
             self.sc_sync();
+        }
+        if self.screen == SCR_PREFS {
+            self.prefs_sync();
         }
         if let Some(d) = &self.detail {
             ui.set_d_area(d.area);
@@ -1279,6 +1287,7 @@ impl Controller {
                 SCR_IPTV_PROFILES => "Ⓐ Se connecter    Ⓧ Recharger le catalogue    Ⓨ Supprimer    Ⓑ Accueil",
                 SCR_IPTV_FORM => "Ⓐ Saisir    → Clavier    Ⓑ Annuler",
                 SCR_IPTV => "Ⓐ Lire / ouvrir    Ⓧ Favori    LB / RB Onglets    Ⓑ Profils",
+                SCR_PREFS => "Ⓐ Activer / désactiver    ← → Changer le rang ou la valeur    LB / RB Défiler    Ⓑ Retour",
                 SCR_SRC_CFG => "Ⓐ / ← → Modifier    Ⓨ Tester    Ⓧ Retirer un tracker    LB / RB Défiler    Ⓑ Retour",
                 _ => "",
         };
@@ -1433,6 +1442,7 @@ impl Controller {
             SCR_IPTV_FORM => self.nav_iptv_form(n),
             SCR_IPTV => self.nav_iptv(n),
             SCR_SRC_CFG => self.nav_sc(n),
+            SCR_PREFS => self.nav_prefs(n),
             _ => {}
         }
         self.sync();
@@ -1460,6 +1470,10 @@ impl Controller {
                     }
                 }
                 self.nav_detail(Nav::Accept);
+            }
+            12 => {
+                self.sc_focus = b;
+                self.nav_prefs(Nav::Accept);
             }
             11 => {
                 self.sc_focus = b;
@@ -3031,7 +3045,7 @@ impl Controller {
     }
 
     /// Lance mpv ; `key` : clé de reprise locale, `hist` : entrée d'historique à compléter.
-    fn launch(&mut self, t: PlayTarget, req: PlayRequest, key: Option<String>, hist: Option<HistoryEntry>) {
+    fn launch(&mut self, t: PlayTarget, mut req: PlayRequest, key: Option<String>, hist: Option<HistoryEntry>) {
         self.playing.store(true, Ordering::SeqCst);
         let svc = self.svc.clone();
         let ui = self.ui();
@@ -3039,7 +3053,30 @@ impl Controller {
         ui.set_playing_title(req.title.clone().into());
         let jf = svc.jf_ready().then(|| svc.jf.clone());
         let anime = t.anime().cloned();
+        // Langues audio / sous-titres selon le type de contenu.
+        req.mpv_args.extend(svc.cfg.player.language_args(t.is_anime()));
+        // Segments à passer (intro, récap, générique) : AniSkip pour les animes, IntroDB sinon.
+        let lookup = match (&anime, self.detail.as_ref().and_then(|d| d.data.anime.as_ref()).and_then(|a| a.anime.id_mal)) {
+            (Some(m), Some(mal)) => Some(crate::segments::Lookup::Anime { mal, episode: m.ep }),
+            (Some(_), None) => None,
+            _ => self
+                .engine_query(&t)
+                .and_then(|q| q.imdb.map(|imdb| crate::segments::Lookup::Video { imdb, season: q.season, episode: q.episode })),
+        };
+        // Épisode suivant proposé en fin d'épisode (popup de l'overlay).
+        let next = self.played_ep.and_then(|i| self.detail.as_ref()?.data.episodes.get(i + 1)).map(|(_, e)| {
+            let label = [e.label.as_str(), e.title.as_str()].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join(" · ");
+            label.replace([',', '='], " ")
+        });
+        if let Some(n) = &next {
+            req.mpv_args.push(format!("--script-opts-append=noosfin-next={n}"));
+        }
+        req.mpv_args.push(format!("--script-opts-append=noosfin-pad={}", self.pad_layout.name()));
         self.spawn(async move {
+            if let Some(l) = lookup {
+                let seg = crate::segments::fetch(&svc.http, l).await;
+                req.mpv_args.extend(seg.script_opts().into_iter().map(|o| format!("--script-opts-append={o}")));
+            }
             let res = player::play(&svc.cfg.player, req, jf).await;
             post(move |c| c.playback_done(res, key, anime, hist));
         });
@@ -3091,6 +3128,7 @@ impl Controller {
             }
         }
         let mut finished = false;
+        let next_now = res.as_ref().is_ok_and(|o| o.next);
         match res {
             Ok(o) => {
                 finished = o.finished();
@@ -3134,6 +3172,17 @@ impl Controller {
         self.reload_detail();
         self.load_dashboard();
         self.reload_tab_keep_focus();
+        // « Épisode suivant » choisi dans le lecteur : on enchaîne tout de suite.
+        if next_now {
+            if let Some(i) = self.played_ep.take() {
+                if self.detail.as_ref().is_some_and(|d| i + 1 < d.data.episodes.len()) {
+                    self.next_prompt = Some((self.next_gen, i + 1));
+                    self.play_next_now();
+                    self.sync();
+                    return;
+                }
+            }
+        }
         // Proposer l'épisode suivant.
         if let (true, Some(i)) = (finished, self.played_ep.take()) {
             let has_next = self.screen == SCR_DETAIL && self.detail.as_ref().is_some_and(|d| i + 1 < d.data.episodes.len());
@@ -3324,8 +3373,9 @@ impl Controller {
     fn settings_actions(&self) -> Vec<String> {
         vec![
             "Sources & débrideur".into(),
+            "Audio · langues et sortie".into(),
+            "Sous-titres · langues, taille et position".into(),
             format!("Clavier physique : {}", session::keyboard_label(&self.svc.cfg.session.keyboard)),
-            format!("Audio : {}", if self.svc.cfg.player.audio == "bitperfect" { "bit-perfect (fréquence d'origine, bitstream HDMI)" } else { "standard (mixage PipeWire)" }),
             match (&self.update, self.update_busy) {
                 (_, true) => "Mise à jour en cours…".to_string(),
                 (Some(r), false) => format!("Installer la mise à jour {} (actuelle : {})", r.version, crate::update::VERSION),
@@ -3377,10 +3427,11 @@ impl Controller {
             }
             Nav::Accept => match self.set_focus {
                 0 => self.open_sc(),
-                1 => self.cycle_keyboard(),
-                2 => self.toggle_audio(),
-                3 => self.update_action(),
-                4 => {
+                1 => self.open_prefs(prefs_ui::PrefsPage::Audio),
+                2 => self.open_prefs(prefs_ui::PrefsPage::Subtitles),
+                3 => self.cycle_keyboard(),
+                4 => self.update_action(),
+                5 => {
                     self.views.clear();
                     self.load_manifest();
                     self.load_tab(self.tab.min(TAB_SHOWS));
@@ -3569,17 +3620,6 @@ impl Controller {
                 }
                 c.sync();
             });
-        });
-        self.sync();
-    }
-
-    fn toggle_audio(&mut self) {
-        let bitperfect = self.svc.cfg.player.audio != "bitperfect";
-        self.update_config(|c| c.player.audio = if bitperfect { "bitperfect" } else { "standard" }.into());
-        self.toast(if bitperfect {
-            "Audio bit-perfect : fréquence d'origine, Dolby / DTS envoyés tels quels à l'ampli (HDMI)"
-        } else {
-            "Audio standard : mixage PipeWire"
         });
         self.sync();
     }

@@ -41,6 +41,14 @@ pub enum Layout {
 }
 
 impl Layout {
+    pub fn name(self) -> &'static str {
+        match self {
+            Layout::Xbox => "xbox",
+            Layout::PlayStation => "playstation",
+            Layout::Nintendo => "nintendo",
+        }
+    }
+
     fn detect(dev: &Device) -> Layout {
         match dev.input_id().vendor() {
             0x054c => Layout::PlayStation,

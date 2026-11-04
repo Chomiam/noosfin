@@ -30,6 +30,8 @@ pub struct PlayRequest {
 pub struct PlayOutcome {
     pub position: f64,
     pub duration: f64,
+    /// « Épisode suivant » choisi dans l'overlay.
+    pub next: bool,
 }
 
 impl PlayOutcome {
@@ -59,7 +61,11 @@ pub async fn play(cfg: &PlayerConfig, req: PlayRequest, jf: Option<Jellyfin>) ->
         // Menu « Image » (bouton Start) : filtres proposés selon la puissance du GPU.
         let (tier, name) = gpu_profile();
         let shaders = dirs::data_dir().unwrap_or_default().join("noosfin/shaders");
-        cmd.arg(format!("--script-opts=noosfin-gpu={tier},noosfin-gpuname={name},noosfin-shaders={}", shaders.display()));
+        cmd.arg(format!("--script-opts-append=noosfin-gpu={tier}"))
+            .arg(format!("--script-opts-append=noosfin-gpuname={name}"))
+            .arg(format!("--script-opts-append=noosfin-shaders={}", shaders.display()))
+            .arg(format!("--script-opts-append=noosfin-nextfile={}", next_file(&sock)));
+        let _ = std::fs::remove_file(next_file(&sock));
     }
     cmd.args(&req.mpv_args);
     // Audio bit-perfect : PCM à sa fréquence d'origine, formats compressés envoyés tels quels
@@ -76,7 +82,7 @@ pub async fn play(cfg: &PlayerConfig, req: PlayRequest, jf: Option<Jellyfin>) ->
     log::info!("lecture : {} ({})", req.title, req.url.split('?').next().unwrap_or_default());
     let mut child = cmd.spawn()?;
 
-    let mut out = PlayOutcome { position: req.start_secs, duration: 0.0 };
+    let mut out = PlayOutcome { position: req.start_secs, duration: 0.0, next: false };
     let mut paused = false;
     let mut started = false;
     let mut conn: Option<(tokio::io::Lines<BufReader<tokio::net::unix::OwnedReadHalf>>, tokio::net::unix::OwnedWriteHalf)> = None;
@@ -136,6 +142,10 @@ pub async fn play(cfg: &PlayerConfig, req: PlayRequest, jf: Option<Jellyfin>) ->
         }
     }
 
+    // L'overlay écrit ce fichier (dans /tmp, partagé avec mpv en Flatpak) avant de quitter.
+    if std::fs::remove_file(next_file(&sock)).is_ok() {
+        out.next = true;
+    }
     log::info!("fin de lecture : {:.0} s / {:.0} s", out.position, out.duration);
     if let (Some(jf), Some(r)) = (&jf, &req.report) {
         if let Err(e) = jf.report(ReportStage::Stop, r, out.position, false).await {
@@ -150,6 +160,10 @@ pub async fn play(cfg: &PlayerConfig, req: PlayRequest, jf: Option<Jellyfin>) ->
         let _ = tokio::process::Command::new("pw-metadata").args(["-n", "settings", "0", "clock.allowed-rates", &rates]).output().await;
     }
     Ok(out)
+}
+
+fn next_file(sock: &str) -> String {
+    format!("{sock}.next")
 }
 
 async fn output(cmd: &str, args: &[&str]) -> String {

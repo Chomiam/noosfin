@@ -649,6 +649,7 @@ component Search inherits Rectangle {
 // ─────────────────────────────── Configuration des sources ───────────────────────────────
 
 component SourcesConfig inherits Rectangle {
+    in property <string> title: "Sources & débrideur";
     in property <[ScRow]> rows;
     in property <int> current;
     in property <string> msg;
@@ -661,7 +662,7 @@ component SourcesConfig inherits Rectangle {
     property <length> list-y: 170px;
     property <length> list-h: root.height - root.list-y - 90px;
 
-    Text { x: Theme.margin; y: 60px; text: "Sources & débrideur"; font-size: 56px; font-weight: 900; color: Theme.text; }
+    Text { x: Theme.margin; y: 60px; text: root.title; font-size: 56px; font-weight: 900; color: Theme.text; }
     Text { x: Theme.margin; y: 128px; text: "Enregistré automatiquement à chaque modification."; font-size: 20px; color: Theme.overlay; }
 
     Rectangle {
@@ -1128,6 +1129,7 @@ export component AppWindow inherits Window {
     in property <int> dash-index;
     in property <[int]> dash-tiles: [0, 1, 2, 4, 5];
     in property <[ScRow]> sc-rows;
+    in property <string> sc-title: "Sources & débrideur";
     in property <int> sc-focus;
     in property <string> sc-msg;
     in property <image> sc-qr;
@@ -1355,13 +1357,14 @@ export component AppWindow inherits Window {
             clicked(i) => { root.click(5, 0, i); }
         }
 
-        if root.screen == 9 : SourcesConfig {
+        if root.screen == 9 || root.screen == 10 : SourcesConfig {
+            title: root.sc-title;
             rows: root.sc-rows;
             current: root.sc-focus;
             msg: root.sc-msg;
             qr: root.sc-qr;
             has-qr: root.sc-has-qr;
-            clicked(i) => { root.click(11, 0, i); }
+            clicked(i) => { root.click(root.screen == 10 ? 12 : 11, 0, i); }
         }
 
         if root.screen == 6 : IptvProfiles {

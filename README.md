@@ -78,7 +78,9 @@ L'installateur vérifie votre système, propose les options puis installe tout :
 
 - 🖥️ **Session dédiée** : Noosfin s'ouvre au démarrage (SDDM) dans KWin, qui gère le HDR. Le curseur est masqué, tout se fait à la manette ou au clavier.
 - 🔀 **Changement de session** : Bureau KDE et Steam (Gamescope, éditions Deck) en un appui, retour automatique au tableau de bord.
-- 🎬 **Lecture mpv** : `gpu-next` + Vulkan Wayland, HDR10 / Dolby Vision transmis à l'écran, overlay moderne à la manette (pistes audio, sous-titres, infos).
+- 🎬 **Lecture mpv** : `gpu-next` + Vulkan Wayland, HDR10 / Dolby Vision transmis à l'écran, overlay à icônes piloté à la manette (pistes audio, sous-titres, infos), B deux fois pour quitter.
+- ⏭️ **Intro, récap et générique** : repérés grâce à [AniSkip](https://aniskip.com) (animes), [IntroDB](https://introdb.app) (séries) et aux chapitres du fichier, affichés sur la timeline ; popups « Passer l'intro » et « Épisode suivant ».
+- 🗣️ **Langues** (*Paramètres → Audio / Sous-titres*) : ordre de priorité des langues audio et des sous-titres, séparément pour les animes et pour les films / séries ; pas de sous-titres en VF ; taille et position des sous-titres.
 - ✨ **Menu Image** (bouton Start pendant la lecture) : AMD FSR, NVIDIA Image Scaling, Anime4K et ArtCNN (agrandissement par IA), proposés selon la puissance de votre carte graphique ; le choix est mémorisé.
 - 🔊 **Audio bit-perfect** (*Paramètres → Audio*) : PCM à sa fréquence d'origine, Dolby Digital / E-AC3 / DTS / TrueHD envoyés tels quels à l'ampli par HDMI (selon les formats déclarés dans les réglages audio de KDE).
 - 💿 **Disque optique** : une tuile apparaît dès qu'un lecteur (interne ou USB) est branché ; DVD, Blu-ray non protégés et CD audio. Les Blu-ray du commerce (AACS) ne sont pas pris en charge.
@@ -123,6 +125,7 @@ sur Switch, A valide et B annule comme sur la console).
 | Ⓧ | F | Favori |
 | LB / RB | Page ↑ / ↓ | Onglet précédent / suivant |
 | Start | m | Menu Image : filtres et agrandissement IA (dans mpv) |
+| B ×2 | Échap ×2 | Fermer le lecteur (dans mpv) |
 | Select | i | Informations de lecture (dans mpv) |
 | Start (hors lecture) / Guide | Début | Tableau de bord |
 

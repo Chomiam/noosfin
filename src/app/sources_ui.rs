@@ -260,6 +260,7 @@ impl Controller {
         self.sc_model.set_vec(rows);
         ui.set_sc_focus(self.sc_focus);
         ui.set_sc_msg(self.sc_msg.clone().into());
+        ui.set_sc_title("Sources & débrideur".into());
     }
 
     /// Enregistre et recharge le moteur de sources.

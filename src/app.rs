@@ -451,6 +451,7 @@ enum Action {
     ToggleWatched,
     Fav,
     IptvFav,
+    Trailer,
 }
 
 #[derive(Clone)]
@@ -477,6 +478,8 @@ struct DetailLoad {
     meta_obj: Option<Meta>,
     iptv: Option<IptvRef>,
     iptv_info: Option<iptv::SeriesInfo>,
+    /// Bande-annonce (URL YouTube), ouverte dans VacuumTube.
+    trailer: Option<String>,
 }
 
 struct Detail {
@@ -1585,19 +1588,30 @@ impl Controller {
 
     fn open_vacuumtube(&mut self) {
         if session::flatpak_installed(session::VACUUMTUBE) {
-            self.run_vacuumtube();
+            self.run_vacuumtube(None);
         } else {
             self.dialog = Some(Dialog::InstallVacuumTube { focus: 0, busy: false });
         }
     }
 
-    fn run_vacuumtube(&mut self) {
+    /// Bande-annonce : ouverte dans VacuumTube (YouTube TV), qui gère la manette et la lecture.
+    fn open_trailer(&mut self, url: Option<String>) {
+        let Some(url) = url else { return };
+        if session::flatpak_installed(session::VACUUMTUBE) {
+            self.run_vacuumtube(Some(url));
+        } else {
+            self.dialog = Some(Dialog::InstallVacuumTube { focus: 0, busy: false });
+        }
+    }
+
+    fn run_vacuumtube(&mut self, deeplink: Option<String>) {
         self.external = true;
         let ui = self.ui();
         ui.set_playing(true);
-        ui.set_playing_title("YouTube · VacuumTube".into());
-        self.spawn(async {
-            let r = session::flatpak_run(session::VACUUMTUBE).await;
+        ui.set_playing_title(if deeplink.is_some() { "Bande-annonce · VacuumTube" } else { "YouTube · VacuumTube" }.into());
+        self.spawn(async move {
+            let args: Vec<String> = deeplink.map(|u| vec!["--deeplink".to_string(), u]).unwrap_or_default();
+            let r = session::flatpak_run(session::VACUUMTUBE, &args).await;
             post(move |c| {
                 c.external = false;
                 c.ui().set_playing(false);
@@ -1627,7 +1641,7 @@ impl Controller {
                         match r {
                             Ok(()) => {
                                 c.toast("VacuumTube installé");
-                                c.run_vacuumtube();
+                                c.run_vacuumtube(None);
                             }
                             Err(e) => c.toast(format!("Installation impossible : {e:#}")),
                         }
@@ -2476,6 +2490,9 @@ impl Controller {
                 }
             }
         }
+        if d.data.trailer.is_some() {
+            b.push(("▶ Bande-annonce".into(), Action::Trailer));
+        }
         if let Some(fav) = fav_btn {
             b.push((if fav { "★ Favori" } else { "☆ Ajouter aux favoris" }.into(), Action::Fav));
         }
@@ -2568,6 +2585,10 @@ impl Controller {
     fn do_action(&mut self, a: Action) {
         match a {
             Action::Fav => return self.toggle_fav(),
+            Action::Trailer => {
+                let url = self.detail.as_ref().and_then(|d| d.data.trailer.clone());
+                return self.open_trailer(url);
+            }
             Action::IptvFav => return self.toggle_iptv_fav_detail(),
             _ => {}
         }
@@ -2581,7 +2602,7 @@ impl Controller {
                 self.state.positions.remove(&t.stream_key());
                 self.play_target(t, false)
             }
-            Action::Fav | Action::IptvFav => {}
+            Action::Fav | Action::IptvFav | Action::Trailer => {}
             Action::Sources => self.open_sources(t),
             Action::ToggleWatched => {
                 if let PlayTarget::Jf { item, .. } = t {
@@ -3797,6 +3818,7 @@ async fn load_meta(svc: &Services, m: Meta) -> anyhow::Result<DetailLoad> {
         seasons: if full.kind == "series" { seasons.iter().map(|s| (SeasonRef::Stremio(*s), format!("Saison {s}"))).collect() } else { vec![] },
         season: 0,
         episodes,
+        trailer: full.trailer.clone(),
         meta_obj: Some(full),
         ..Default::default()
     })
@@ -3919,6 +3941,7 @@ async fn load_anime(svc: &Services, id: i64, anime_lib: Option<String>) -> anyho
         episodes,
         seasons,
         season,
+        trailer: a.trailer_url(),
         anime: Some(AnimeCtx { anime: a, kitsu }),
         ..Default::default()
     })

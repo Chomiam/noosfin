@@ -88,6 +88,22 @@ pub struct Anime {
     #[serde(rename = "streamingEpisodes")]
     pub streaming_episodes: Vec<StreamingEpisode>,
     pub studios: Studios,
+    pub trailer: Option<Trailer>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Trailer {
+    pub id: Option<String>,
+    pub site: Option<String>,
+}
+
+impl Anime {
+    /// Bande-annonce YouTube (AniList ne référence parfois que Dailymotion : ignorée).
+    pub fn trailer_url(&self) -> Option<String> {
+        let t = self.trailer.as_ref()?;
+        (t.site.as_deref() == Some("youtube")).then(|| format!("https://www.youtube.com/watch?v={}", t.id.clone().unwrap_or_default()))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -252,7 +268,7 @@ impl AniList {
 
     pub async fn by_id(&self, id: i64) -> Result<Anime> {
         let q = format!(
-            "query($id: Int) {{ Media(id: $id, type: ANIME) {{ {FIELDS} streamingEpisodes {{ title thumbnail }} }} }}"
+            "query($id: Int) {{ Media(id: $id, type: ANIME) {{ {FIELDS} streamingEpisodes {{ title thumbnail }} trailer {{ id site }} }} }}"
         );
         let data = self.query(&q, json!({ "id": id })).await?;
         Ok(serde_json::from_value(data["Media"].clone())?)

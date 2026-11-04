@@ -35,6 +35,9 @@ pub struct Meta {
     /// Autres titres (anglais, original) pour la recherche de sources.
     #[serde(skip)]
     pub alt_names: Vec<String>,
+    /// Bande-annonce (URL YouTube), fournie par TMDB.
+    #[serde(skip)]
+    pub trailer: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

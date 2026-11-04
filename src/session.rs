@@ -158,8 +158,8 @@ pub async fn flatpak_install(app: &str) -> Result<()> {
 }
 
 /// Lance une application Flatpak et attend sa fermeture.
-pub async fn flatpak_run(app: &str) -> Result<()> {
-    let st = tokio::process::Command::new("flatpak").args(["run", app]).kill_on_drop(true).status().await?;
+pub async fn flatpak_run(app: &str, args: &[String]) -> Result<()> {
+    let st = tokio::process::Command::new("flatpak").args(["run", app]).args(args).kill_on_drop(true).status().await?;
     if !st.success() {
         bail!("{app} s'est arrêté avec le code {:?}", st.code());
     }

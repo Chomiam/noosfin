@@ -97,7 +97,9 @@ impl Tmdb {
             None => bail!("identifiant non géré par TMDB : {id}"),
         };
         let path = format!("/{}/{tmdb_id}", if tv { "tv" } else { "movie" });
-        let v = self.get(&path, &[("append_to_response", "external_ids,translations")]).await?;
+        let lang2 = self.lang.split('-').next().unwrap_or("fr").to_string();
+        let video_langs = format!("{lang2},en,null");
+        let v = self.get(&path, &[("append_to_response", "external_ids,translations,videos"), ("include_video_language", &video_langs)]).await?;
         let mut m = preview(&v, tv);
         // Titre anglais : c'est souvent celui des releases sur les trackers.
         let en = v["translations"]["translations"]
@@ -113,6 +115,7 @@ impl Tmdb {
             m.alt_names.insert(0, en);
         }
         m.genres = v["genres"].as_array().into_iter().flatten().filter_map(|g| g["name"].as_str().map(String::from)).collect();
+        m.trailer = trailer(&v["videos"]["results"], &lang2);
         m.imdb_id = v["external_ids"]["imdb_id"].as_str().or(v["imdb_id"].as_str()).filter(|s| !s.is_empty()).map(String::from);
         if let Some(rt) = v["runtime"].as_i64().filter(|r| *r > 0) {
             m.release_info = Some(format!("{} · {}h{:02}", m.release_info.clone().unwrap_or_default(), rt / 60, rt % 60));
@@ -149,6 +152,28 @@ impl Tmdb {
         }
         out
     }
+}
+
+/// Bande-annonce YouTube : dans la langue des fiches d'abord, puis en anglais ; officielle de
+/// préférence, sinon un teaser.
+fn trailer(videos: &Value, lang: &str) -> Option<String> {
+    let list = videos.as_array()?;
+    let score = |v: &Value| {
+        let kind = match v["type"].as_str() {
+            Some("Trailer") => 2,
+            Some("Teaser") => 1,
+            _ => return None,
+        };
+        (v["site"].as_str() == Some("YouTube")).then_some(())?;
+        let l = match v["iso_639_1"].as_str() {
+            Some(x) if x == lang => 2,
+            Some("en") => 1,
+            _ => 0,
+        };
+        Some((l, kind, v["official"].as_bool().unwrap_or(false) as i32))
+    };
+    let best = list.iter().filter_map(|v| Some((score(v)?, v))).max_by_key(|(s, _)| *s)?;
+    Some(format!("https://www.youtube.com/watch?v={}", best.1["key"].as_str()?))
 }
 
 /// Espaces insécables (fines) absentes de la police de l'interface.
